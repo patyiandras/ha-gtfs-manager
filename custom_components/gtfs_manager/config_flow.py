@@ -155,7 +155,13 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             {CONF_URL: suggested} if suggested else {},
         )
-        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="user",
+            data_schema=schema,
+            errors=errors,
+            # Csak minta a súgószövegben (a HA a fordításban nem enged URL-t).
+            description_placeholders={"example": "https://transit.example.org"},
+        )
 
     async def _probe(self, url: str) -> tuple[GtfsManagerApi, dict[str, Any]]:
         """A szerver ellenőrzése. Átirányítást CSAK ugyanazon a hoszton követünk

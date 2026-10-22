@@ -3,12 +3,12 @@
     "step": {
       "user": {
         "title": "GTFS Manager server",
-        "description": "Enter the address of the GTFS Manager instance (e.g. https://timetable.example.org). Its /api/v1 endpoint will be used.",
+        "description": "Enter the address of the GTFS Manager instance (e.g. {example}). Its /api/v1 endpoint will be used.",
         "data": {
           "url": "Server URL"
         },
         "data_description": {
-          "url": "Without a scheme, https:// is assumed."
+          "url": "Without a scheme, HTTPS is assumed."
         }
       },
       "feed": {

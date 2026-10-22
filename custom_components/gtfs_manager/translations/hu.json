@@ -3,12 +3,12 @@
     "step": {
       "user": {
         "title": "GTFS Manager szerver",
-        "description": "Add meg a GTFS Manager példány címét (pl. https://menetrend.example.org). A szerver /api/v1 végpontját használjuk.",
+        "description": "Add meg a GTFS Manager példány címét (pl. {example}). A szerver /api/v1 végpontját használjuk.",
         "data": {
           "url": "Szerver címe"
         },
         "data_description": {
-          "url": "Séma nélkül https:// lesz előtte."
+          "url": "Séma nélkül HTTPS-t feltételezünk."
         }
       },
       "feed": {
