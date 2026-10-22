@@ -169,7 +169,13 @@ class DelaySensor(_Base):
         if not nxt:
             return {}
         d = nxt.as_dict(dt_util.utcnow())
+        if not nxt.realtime or nxt.delay_sec is None:
+            reason = f"Nincs élő adat a {d['route']} {d['scheduled']}-kor induló menetről."
+        else:
+            reason = None
         return {
+            # Miért ismeretlen az állapot (élő adat híján nem mondunk 0-t).
+            "reason": reason,
             "route": d["route"],
             "headsign": d["headsign"],
             "scheduled": d["scheduled"],

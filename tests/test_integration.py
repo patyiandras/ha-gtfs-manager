@@ -373,3 +373,36 @@ async def test_legacy_hungarian_entity_ids_are_migrated(hass: HomeAssistant, aio
     assert hass.states.get("sensor.hatar_ut_m_50_kovetkezo_indulas") is None
     assert hass.states.get("sensor.sajat_menetrendem") is not None
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_unknown_delay_does_not_alert_but_later_delay_does(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """A következő indulásról nincs élő adat (Delay: ismeretlen) → ettől nincs
+    riasztás; egy KÉSŐBBI késő menet viszont bekapcsolja, okkal együtt."""
+    now = dt_util.utcnow().replace(microsecond=0)
+    no_rt = _dep("T1", now + timedelta(minutes=5), now + timedelta(minutes=5), realtime=False, delay=None)
+    late = _dep(
+        "T2", now + timedelta(minutes=30), now + timedelta(minutes=40), realtime=True, delay=600
+    )
+    payload = {"api_version": 1, "stop": {"stop_name": "Határ út M"}, "departures": [no_rt]}
+
+    aioclient_mock.get(f"{BASE}/api/v1/feeds/f1/stops/S1/departures", json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    delay = hass.states.get("sensor.hatar_ut_m_50_delay")
+    assert delay.state == "unknown" and "Nincs élő adat" in delay.attributes["reason"]
+    assert hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert").state == "off"
+
+    aioclient_mock.clear_requests()
+    payload["departures"] = [no_rt, late]
+    aioclient_mock.get(f"{BASE}/api/v1/feeds/f1/stops/S1/departures", json=payload)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.hatar_ut_m_50_delay").state == "unknown"
+    alert = hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert")
+    assert alert.state == "on"
+    assert alert.attributes["reason"].startswith("50 ") and alert.attributes["reason"].endswith("→ +10 perc")
+    assert await hass.config_entries.async_unload(entry.entry_id)

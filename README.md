@@ -17,9 +17,9 @@ használható (Google Home, Gemini, Assist).
 |---|---|---|
 | `sensor.<megálló>_next_departure` | a következő indulás **várható** időpontja (timestamp) | `route`, `headsign`, `scheduled`, `expected`, `minutes`, `delay_min`, `realtime`, `speech` |
 | `sensor.<megálló>_next_departure_minutes` | hány perc múlva indul | `route`, `headsign`, `realtime` |
-| `sensor.<megálló>_delay` | a következő indulás késése percben (negatív = korábban jön; ismeretlen, ha nincs róla élő adat) | `route`, `headsign`, `scheduled`, `expected` |
+| `sensor.<megálló>_delay` | a következő indulás késése percben (negatív = korábban jön; ismeretlen, ha nincs róla élő adat) | `reason` (miért ismeretlen), `route`, `headsign`, `scheduled`, `expected` |
 | `sensor.<megálló>_timetable` | indulások száma az időablakban | `departures` (lista), `speech` |
-| `binary_sensor.<megálló>_delay_alert` | **be**, ha a listában valamelyik indulás legalább a küszöbnyit (alapból 3 perc) késik, vagy elmarad | `delayed_count`, `canceled_count`, `max_delay_min`, `items`, `speech` |
+| `binary_sensor.<megálló>_delay_alert` | **be**, ha a listában valamelyik indulás legalább a küszöbnyit (alapból 3 perc) késik, vagy elmarad | `reason` (pl. „S60 22:36 → +10 perc”), `delayed_count`, `canceled_count`, `max_delay_min`, `items`, `speech` |
 
 - Az entitás-azonosítók **mindig angolok** (`…_next_departure`, `…_delay_alert`),
   a Home Assistant nyelvétől függetlenül; a felületen megjelenő név a HA
@@ -30,6 +30,11 @@ használható (Google Home, Gemini, Assist).
   GTFS-RealTime források). Ha egy menetről nincs élő adat, a menetrendi
   időt kapod, `realtime: false` jelöléssel. A felolvasott mondat ilyenkor azt
   mondja: „menetrend szerint”.
+- A **Delay** a *következő* indulásról szól, a **Delay alert** a *teljes listáról*.
+  Ezért lehet a Delay „ismeretlen” (a következő menetről nincs élő adat),
+  miközben a Delay alert be van kapcsolva (egy későbbi menet késik). Az
+  ismeretlen késés soha nem kapcsolja be a riasztást; a `reason` attribútum
+  mindkettőnél megmondja, miért olyan az állapot.
 - A **törölt** (elmaradó) menet a listában `canceled: true` jelölést kap, a
   „következő indulás” szenzor pedig átugorja.
 - Az **állomás** típusú megálló (több peron) az összes peron indulását mutatja.

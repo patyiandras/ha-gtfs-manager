@@ -22,6 +22,13 @@ async def async_setup_entry(
     async_add_entities([DelayAlertBinarySensor(entry.runtime_data)])
 
 
+def _reason(dep, now) -> str:
+    d = dep.as_dict(now)
+    if dep.canceled:
+        return f"{d['route']} {d['scheduled']} elmarad"
+    return f"{d['route']} {d['scheduled']} → +{d['delay_min']} perc"
+
+
 class DelayAlertBinarySensor(GtfsManagerEntity, BinarySensorEntity):
     """BE, ha a lista valamely indulása legalább a küszöbnyit késik, vagy elmarad.
 
@@ -57,6 +64,8 @@ class DelayAlertBinarySensor(GtfsManagerEntity, BinarySensorEntity):
         hits = data.delayed(threshold)
         delays = [d.delay_sec for d in hits if not d.canceled and d.delay_sec is not None]
         return {
+            # Röviden, miért BE: „S60 22:36 → +10 perc; 3-as 22:40 elmarad".
+            "reason": "; ".join(_reason(d, now) for d in hits) or None,
             "threshold_min": threshold,
             "delayed_count": sum(1 for d in hits if not d.canceled),
             "canceled_count": sum(1 for d in hits if d.canceled),
