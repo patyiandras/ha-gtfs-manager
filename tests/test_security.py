@@ -154,11 +154,26 @@ async def test_options_keep_route_filter_when_server_unreachable(
 
 async def test_server_errors_are_reported_precisely(hass: HomeAssistant, aioclient_mock) -> None:
     """Karbantartás / korlát / egyéb HTTP-hiba nem „rossz cím"-ként jelenik meg."""
-    for status, expected in ((503, "maintenance"), (429, "rate_limited"), (502, "http_error"), (404, "invalid_api")):
+    for status, expected in ((503, "maintenance"), (429, "rate_limited"), (502, "http_error"), (404, "not_gtfs_manager")):
         aioclient_mock.clear_requests()
         aioclient_mock.get(f"{BASE}/api/v1/info", status=status)
         result = await _start(hass)
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_URL: BASE})
         assert result["errors"] == {"base": expected}, (status, result["errors"])
-        if expected == "http_error":
-            assert result["description_placeholders"]["status"] == "502"
+        detail = result["description_placeholders"]["status"]
+        if expected in ("http_error", "not_gtfs_manager"):
+            assert f"{BASE}/api/v1/info → HTTP {status}" in detail, detail
+            assert "nem Cloudflare" in detail  # a mock nem küld CF-RAY fejlécet
+
+
+async def test_url_with_path_falls_back_to_root(hass: HomeAssistant, aioclient_mock) -> None:
+    """A böngészőből bemásolt `…/home` címen a weboldal válaszol — a gyökér a jó."""
+    aioclient_mock.get(f"{BASE}/home/api/v1/info", text="<html>app</html>")
+    aioclient_mock.get(
+        f"{BASE}/api/v1/info", json={"api_version": 1, "feeds": [{"id": "f1", "name": "F"}]}
+    )
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: f"{BASE}/home"}
+    )
+    assert result["step_id"] == "stop_search", result

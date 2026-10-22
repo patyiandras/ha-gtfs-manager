@@ -36,6 +36,7 @@ from .api import (
     ApiConnectionError,
     ApiError,
     ApiHttpError,
+    ApiInvalid,
     ApiMaintenance,
     ApiNotFound,
     ApiRateLimited,
@@ -173,15 +174,17 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 except ApiRateLimited:
                     errors["base"] = "rate_limited"
                 except ApiNotFound as err:
-                    _LOGGER.warning("Nincs /api/v1 ezen a címen (404): %s", err)
-                    errors["base"] = "invalid_api"
+                    _LOGGER.warning("Nincs /api/v1 ezen a címen: %s", err.detail)
+                    errors["base"] = "not_gtfs_manager"
+                    detail = err.detail
                 except ApiHttpError as err:
                     _LOGGER.warning("A GTFS Manager szerver hibát adott: %s", err)
                     errors["base"] = "http_error"
-                    detail = str(err.status)
+                    detail = err.detail
                 except ApiError as err:
-                    _LOGGER.warning("Nem GTFS Manager válasz: %s", err)
-                    errors["base"] = "invalid_api"
+                    _LOGGER.warning("Nem GTFS Manager válasz: %s", err.detail)
+                    errors["base"] = "not_gtfs_manager"
+                    detail = err.detail
                 except Exception:  # noqa: BLE001
                     _LOGGER.exception("Váratlan hiba a szerver ellenőrzésekor")
                     errors["base"] = "unknown"
@@ -225,6 +228,14 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 raise
             api = GtfsManagerApi(session, target)
             return api, await api.info()
+        except (ApiNotFound, ApiInvalid):
+            # A böngészőből bemásolt cím gyakran útvonalat is visz (`…/home`):
+            # ott a weboldal válaszol, nem az API. Ilyenkor a gyökércím a jó.
+            parts = urlsplit(url)
+            if not parts.path:
+                raise
+            root = GtfsManagerApi(session, f"{parts.scheme}://{parts.netloc}")
+            return root, await root.info()
 
     # ── 2. Menetrend ────────────────────────────────────────────────────────
     async def async_step_feed(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

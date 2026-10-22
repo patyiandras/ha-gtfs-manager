@@ -44,7 +44,7 @@
     "error": {
       "invalid_url": "Érvénytelen cím.",
       "cannot_connect": "A szerver nem érhető el.",
-      "invalid_api": "Ezen a címen nincs GTFS Manager /api/v1 (404) — rossz cím, vagy a szerver még régi verziót futtat.",
+      "invalid_api": "A szerver hibás vagy nem várt választ adott.",
       "no_feeds": "A szerveren nincs aktív menetrend.",
       "no_stops": "Nincs találat.",
       "query_too_short": "Legalább 2 karaktert írj be.",
@@ -52,7 +52,8 @@
       "redirect_other_host": "A szerver egy másik címre irányít át. Add meg közvetlenül a végleges címet.",
       "maintenance": "A szerver épp karbantartás (pl. frissítés) alatt áll. Próbáld újra pár perc múlva.",
       "rate_limited": "Túl sok kérés érkezett erről a címről. Próbáld újra egy perc múlva.",
-      "http_error": "A szerver hibát adott (HTTP {status}). Próbáld újra később; a részletek a Home Assistant naplójában."
+      "http_error": "A szerver hibát adott: {status}. Próbáld újra később; a részletek a Home Assistant naplójában.",
+      "not_gtfs_manager": "Ezen a címen nem a GTFS Manager /api/v1 válaszolt. Ellenőrzött kérés: {status}. Ha „nem Cloudflare” szerepel benne, a Home Assistant a nevet a helyi hálózaton máshová oldja fel (pl. router / Pi-hole helyi DNS-bejegyzés)."
     },
     "abort": {
       "already_configured": "Ez a megálló ezekkel a járatokkal már fel van véve.",

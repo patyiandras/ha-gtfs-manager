@@ -203,7 +203,7 @@ async def test_bad_server(hass: HomeAssistant, aioclient_mock) -> None:
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_URL: "https://nope.example.org"}
     )
-    assert result["errors"] == {"base": "invalid_api"}
+    assert result["errors"] == {"base": "not_gtfs_manager"}
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_URL: "ftp://x"}
     )

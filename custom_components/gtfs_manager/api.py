@@ -40,7 +40,16 @@ _HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
 
 
 class ApiError(Exception):
-    """Általános API-hiba (nem várt HTTP-válasz)."""
+    """Általános API-hiba (nem várt HTTP-válasz).
+
+    A `detail` emberi olvasásra szánt diagnosztika (melyik URL, mi jött vissza,
+    ki válaszolt) — a varázsló hibaüzenete mutatja meg, hogy a felhasználó lássa,
+    miért nem jó a cím.
+    """
+
+    def __init__(self, message: str = "", detail: str | None = None) -> None:
+        super().__init__(message)
+        self.detail = detail or message
 
 
 class ApiConnectionError(ApiError):
@@ -55,8 +64,8 @@ class ApiHttpError(ApiError):
     """Nem várt HTTP-státusz (pl. 5xx, Cloudflare-blokk). A `status` a varázsló
     hibaüzenetébe kerül, hogy a felhasználó lássa, mi történt."""
 
-    def __init__(self, url: str, status: int) -> None:
-        super().__init__(f"HTTP {status}: {url}")
+    def __init__(self, url: str, status: int, detail: str | None = None) -> None:
+        super().__init__(f"HTTP {status}: {url}", detail)
         self.status = status
 
 
@@ -254,28 +263,39 @@ class GtfsManagerApi:
                 ) as resp:
                     if 300 <= resp.status < 400:
                         raise ApiRedirect(url, resp.headers.get("Location"))
+                    # Ki válaszolt? A Cloudflare-en át érkező válaszban van CF-RAY;
+                    # ha nincs, a kérés helyben (pl. belső DNS-sel) máshová ment.
+                    via = "Cloudflare" if "CF-RAY" in resp.headers else (
+                        "nem Cloudflare: " + (clean_text(resp.headers.get("Server"), 40) or "?")
+                    )
+                    ctype = clean_text(resp.headers.get("Content-Type", "?").split(";")[0], 40)
+                    detail = f"{url} → HTTP {resp.status}, {ctype}, {via}"
                     if resp.status == 404:
-                        raise ApiNotFound(url)
+                        raise ApiNotFound(url, detail)
                     if resp.status == 503:
-                        raise ApiMaintenance(url, resp.status)
+                        raise ApiMaintenance(url, resp.status, detail)
                     if resp.status == 429:
-                        raise ApiRateLimited(url, resp.status)
+                        raise ApiRateLimited(url, resp.status, detail)
                     if resp.status >= 400:
-                        raise ApiHttpError(url, resp.status)
+                        raise ApiHttpError(url, resp.status, detail)
                     body = await resp.content.read(MAX_RESPONSE_BYTES + 1)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ApiConnectionError(f"{url}: {err}") from err
         if len(body) > MAX_RESPONSE_BYTES:
-            raise ApiInvalid(f"Túl nagy válasz: {url}")
+            raise ApiInvalid(f"Túl nagy válasz: {url}", detail)
         try:
             return json.loads(body)
         except (ValueError, UnicodeDecodeError) as err:
-            raise ApiInvalid(f"Nem JSON válasz: {url}") from err
+            raise ApiInvalid(f"Nem JSON válasz: {url}", f"{detail} (nem JSON)") from err
 
     async def info(self) -> dict[str, Any]:
         data = await self._get("/info")
         if not isinstance(data, dict) or data.get("api_version") != API_VERSION:
-            raise ApiInvalid("Nem támogatott API-verzió")
+            version = data.get("api_version") if isinstance(data, dict) else None
+            raise ApiInvalid(
+                "Nem támogatott API-verzió",
+                f"{self.base_url}/api/v1/info → JSON, api_version={version!r}",
+            )
         feeds = []
         for raw in _dicts(data.get("feeds"), MAX_FEEDS):
             feed_id = clean_id(raw.get("id"))

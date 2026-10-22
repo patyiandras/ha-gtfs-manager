@@ -44,7 +44,7 @@
     "error": {
       "invalid_url": "Invalid URL.",
       "cannot_connect": "Cannot connect to the server.",
-      "invalid_api": "No GTFS Manager /api/v1 at this address (404) — wrong address, or the server runs an older version.",
+      "invalid_api": "The server returned an invalid or unexpected response.",
       "no_feeds": "The server has no active feed.",
       "no_stops": "No stops found.",
       "query_too_short": "Type at least 2 characters.",
@@ -52,7 +52,8 @@
       "redirect_other_host": "The server redirects to a different host. Enter the final address directly.",
       "maintenance": "The server is under maintenance (e.g. updating). Try again in a few minutes.",
       "rate_limited": "Too many requests from this address. Try again in a minute.",
-      "http_error": "The server returned an error (HTTP {status}). Try again later; details are in the Home Assistant log."
+      "http_error": "The server returned an error: {status}. Try again later; details are in the Home Assistant log.",
+      "not_gtfs_manager": "This address did not answer as a GTFS Manager /api/v1. Checked request: {status}. If it says “not Cloudflare”, Home Assistant resolves the name to a different host on your local network (e.g. a router / Pi-hole local DNS entry)."
     },
     "abort": {
       "already_configured": "This stop with these routes is already configured.",
