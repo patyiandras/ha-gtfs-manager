@@ -15,12 +15,17 @@ használható (Google Home, Gemini, Assist).
 
 | Entitás | Állapot | Fontosabb attribútumok |
 |---|---|---|
-| `sensor.<megálló>_kovetkezo_indulas` | a következő indulás **várható** időpontja (timestamp) | `route`, `headsign`, `scheduled`, `expected`, `minutes`, `delay_min`, `realtime`, `speech` |
-| `sensor.<megálló>_kovetkezo_indulas_perc` | hány perc múlva indul | `route`, `headsign`, `realtime` |
-| `sensor.<megálló>_keses` | a következő indulás késése percben (negatív = korábban jön; ismeretlen, ha nincs róla élő adat) | `route`, `headsign`, `scheduled`, `expected` |
-| `sensor.<megálló>_menetrend` | indulások száma az időablakban | `departures` (lista), `speech` |
-| `binary_sensor.<megálló>_keses_van` | **be**, ha a listában valamelyik indulás legalább a küszöbnyit (alapból 3 perc) késik, vagy elmarad | `delayed_count`, `canceled_count`, `max_delay_min`, `items`, `speech` |
+| `sensor.<megálló>_next_departure` | a következő indulás **várható** időpontja (timestamp) | `route`, `headsign`, `scheduled`, `expected`, `minutes`, `delay_min`, `realtime`, `speech` |
+| `sensor.<megálló>_next_departure_minutes` | hány perc múlva indul | `route`, `headsign`, `realtime` |
+| `sensor.<megálló>_delay` | a következő indulás késése percben (negatív = korábban jön; ismeretlen, ha nincs róla élő adat) | `route`, `headsign`, `scheduled`, `expected` |
+| `sensor.<megálló>_timetable` | indulások száma az időablakban | `departures` (lista), `speech` |
+| `binary_sensor.<megálló>_delay_alert` | **be**, ha a listában valamelyik indulás legalább a küszöbnyit (alapból 3 perc) késik, vagy elmarad | `delayed_count`, `canceled_count`, `max_delay_min`, `items`, `speech` |
 
+- Az entitás-azonosítók **mindig angolok** (`…_next_departure`, `…_delay_alert`),
+  a Home Assistant nyelvétől függetlenül; a felületen megjelenő név a HA
+  nyelvén látszik (pl. „Késés van”). A korábbi verzió magyar azonosítóit
+  (`…_kovetkezo_indulas`, `…_keses_van`) az integráció az első betöltéskor
+  angolra nevezi át, a kézzel átnevezett azonosítókhoz nem nyúl.
 - A **késés** a szerver élő adataiból jön (saját követett járművek, külső
   GTFS-RealTime források). Ha egy menetről nincs élő adat, a menetrendi
   időt kapod, `realtime: false` jelöléssel. A felolvasott mondat ilyenkor azt
@@ -108,7 +113,7 @@ a megálló-választó tölti ki. YAML-nézetre váltva látszik az azonosító.
 type: markdown
 title: Határ út M
 content: >
-  {% for d in state_attr('sensor.hatar_ut_m_50_menetrend', 'departures') or [] %}
+  {% for d in state_attr('sensor.hatar_ut_m_50_timetable', 'departures') or [] %}
   **{{ d.route }}** → {{ d.headsign }} · {{ d.expected }}
   {%- if d.canceled %} ~~elmarad~~
   {%- elif d.realtime and d.delay_min %} ({{ '%+d' % d.delay_min }} perc)
@@ -128,7 +133,7 @@ automation:
   - alias: Késés-figyelmeztetés reggel
     triggers:
       - trigger: state
-        entity_id: binary_sensor.gyomro_s60_g60_keses_van
+        entity_id: binary_sensor.gyomro_s60_g60_delay_alert
         to: "on"
     conditions:
       - condition: time
@@ -144,7 +149,7 @@ automation:
           entity_id: tts.google_translate_hu_hu
         data:
           media_player_entity_id: media_player.nappali_hangszoro
-          message: "{{ state_attr('binary_sensor.gyomro_s60_g60_keses_van', 'speech') }}"
+          message: "{{ state_attr('binary_sensor.gyomro_s60_g60_delay_alert', 'speech') }}"
 ```
 
 Indulás előtt egy szkriptből is rákérdezhetsz: a `get_departures`

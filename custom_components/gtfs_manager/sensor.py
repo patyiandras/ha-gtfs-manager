@@ -54,6 +54,12 @@ class GtfsManagerEntity(CoordinatorEntity[GtfsManagerCoordinator]):
         )
 
     @property
+    def suggested_object_id(self) -> str | None:
+        """Az entitás-azonosító MINDIG angol (`…_delay_alert`), a felület nyelvétől
+        függetlenül; a megjelenített név marad a fordított (pl. „Késés van")."""
+        return self.translation_key.replace("_", " ") if self.translation_key else None
+
+    @property
     def _next(self) -> Departure | None:
         return self.coordinator.data.next if self.coordinator.data else None
 

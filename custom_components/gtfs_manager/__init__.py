@@ -10,16 +10,17 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_URL, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.util import dt as dt_util
+from homeassistant.util import dt as dt_util, slugify
 
 from .api import ApiError, GtfsManagerApi
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
     ATTR_LIMIT,
     DOMAIN,
+    LEGACY_HU_NAMES,
     MAX_DEPARTURES,
     SERVICE_GET_DEPARTURES,
 )
@@ -85,9 +86,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: GtfsManagerConfigEntry) 
     coordinator = GtfsManagerCoordinator(hass, entry, api)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+    _async_migrate_entity_ids(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_on_options))
     return True
+
+
+def _async_migrate_entity_ids(hass: HomeAssistant, entry: GtfsManagerConfigEntry) -> None:
+    """Magyar (automatikusan képzett) entitás-azonosítók → angol.
+
+    Csak azt nevezi át, ami pontosan a régi automatikus alak volt
+    (`<eszköznév>_<magyar név>`): a felhasználó által átnevezett azonosítóhoz
+    nem nyúl, és ütközés esetén (a cél már foglalt) sem.
+    """
+    ent_reg = er.async_get(hass)
+    dev_reg = dr.async_get(hass)
+    prefix = f"{entry.entry_id}_"
+    for reg in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        key = reg.unique_id.removeprefix(prefix)
+        hu_name = LEGACY_HU_NAMES.get(key)
+        if not hu_name or reg.unique_id == key:
+            continue
+        device = dev_reg.async_get(reg.device_id) if reg.device_id else None
+        device_name = (device.name_by_user or device.name) if device else entry.title
+        domain = reg.domain
+        legacy = f"{domain}.{slugify(f'{device_name} {hu_name}')}"
+        target = f"{domain}.{slugify(f'{device_name} {key}')}"
+        if reg.entity_id != legacy or legacy == target or ent_reg.async_get(target):
+            continue
+        ent_reg.async_update_entity(reg.entity_id, new_entity_id=target)
 
 
 async def _async_reload_on_options(hass: HomeAssistant, entry: GtfsManagerConfigEntry) -> None:

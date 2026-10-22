@@ -295,3 +295,81 @@ async def test_delay_alert_threshold(hass: HomeAssistant, aioclient_mock) -> Non
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert any(str(k) == "delay_threshold" for k in result["data_schema"].schema)
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+def _entry(**extra):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    return MockConfigEntry(
+        domain=DOMAIN,
+        title="Határ út M – 50",
+        data={
+            CONF_URL: BASE,
+            "feed_id": "f1",
+            "feed_name": "Feed One",
+            "stop_id": "S1",
+            "stop_name": "Határ út M",
+            "lines": [["50", "Pestszentlőrinc"]],
+            "route_ids": [],
+            "route_labels": ["50"],
+        },
+        options={"departures": 10, "horizon_min": 180, "scan_interval": 60},
+        **extra,
+    )
+
+
+async def test_entity_ids_are_english_on_hungarian_ha(hass: HomeAssistant, aioclient_mock) -> None:
+    """Magyar nyelvű HA-n is angol azonosító, magyar megjelenített névvel."""
+    hass.config.language = "hu"
+    _mock_server(aioclient_mock)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    ids = sorted(s.entity_id for s in hass.states.async_all() if "hatar_ut_m_50" in s.entity_id)
+    assert ids == [
+        "binary_sensor.hatar_ut_m_50_delay_alert",
+        "sensor.hatar_ut_m_50_delay",
+        "sensor.hatar_ut_m_50_next_departure",
+        "sensor.hatar_ut_m_50_next_departure_minutes",
+        "sensor.hatar_ut_m_50_timetable",
+    ], ids
+    alert = hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert")
+    assert alert.attributes["friendly_name"] == "Határ út M – 50 Késés van"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_legacy_hungarian_entity_ids_are_migrated(hass: HomeAssistant, aioclient_mock) -> None:
+    """Korábbi verzió magyar azonosítói angolra; a kézzel átnevezett marad."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    _mock_server(aioclient_mock)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    dev = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, entry.entry_id)}, name=entry.title
+    )
+    ent_reg = er.async_get(hass)
+    for domain, key, object_id in (
+        ("sensor", "next_departure", "hatar_ut_m_50_kovetkezo_indulas"),
+        ("binary_sensor", "delay_alert", "hatar_ut_m_50_keses_van"),
+        ("sensor", "timetable", "sajat_menetrendem"),  # felhasználó nevezte át
+    ):
+        ent_reg.async_get_or_create(
+            domain,
+            DOMAIN,
+            f"{entry.entry_id}_{key}",
+            config_entry=entry,
+            device_id=dev.id,
+            suggested_object_id=object_id,
+        )
+
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.hatar_ut_m_50_next_departure") is not None
+    assert hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert") is not None
+    assert hass.states.get("sensor.hatar_ut_m_50_kovetkezo_indulas") is None
+    assert hass.states.get("sensor.sajat_menetrendem") is not None
+    assert await hass.config_entries.async_unload(entry.entry_id)

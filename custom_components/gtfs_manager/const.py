@@ -34,6 +34,17 @@ MAX_HORIZON = 720
 # Közeli megállók keresési sugara (m), ha a felhasználó nem ír be nevet.
 NEARBY_RADIUS_M = 1000
 
+# A korábbi verziók magyar HA-n a magyar névből képezték az entitás-azonosítót
+# (`…_kovetkezo_indulas`). Ezeket az első betöltéskor angolra nevezzük át —
+# lásd `__init__._async_migrate_entity_ids`. Kulcs: az entitás `translation_key`-e.
+LEGACY_HU_NAMES = {
+    "next_departure": "Következő indulás",
+    "next_departure_minutes": "Következő indulás (perc)",
+    "delay": "Késés",
+    "timetable": "Menetrend",
+    "delay_alert": "Késés van",
+}
+
 SERVICE_GET_DEPARTURES = "get_departures"
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_LIMIT = "limit"
