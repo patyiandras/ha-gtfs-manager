@@ -6,6 +6,7 @@ Futtatás: `pip install pytest-homeassistant-custom-component`, majd `pytest`.
 from __future__ import annotations
 
 from datetime import timedelta
+import json
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_NAME, CONF_URL
@@ -16,6 +17,7 @@ from homeassistant.util import dt as dt_util
 from custom_components.gtfs_manager.const import DOMAIN
 
 BASE = "https://transit.example.org"
+LINE_50 = '["50", "Pestszentlőrinc"]'
 
 
 def _iso(d):
@@ -75,7 +77,12 @@ STOP = {
     "stop_desc": None,
     "distance_m": None,
     "is_station": False,
-    "routes": [{"route_id": "R50", "route_label": "50", "direction": "Pestszentlőrinc"}],
+    # MÁV-szerű eset: egy viszonylat több változata (route_id) — a választóban egyszer.
+    "routes": [
+        {"route_id": "R50", "route_label": "50", "direction": "Pestszentlőrinc"},
+        {"route_id": "R50b", "route_label": "50", "direction": "Pestszentlőrinc"},
+        {"route_id": "R50c", "route_label": "50", "direction": "Határ út M"},
+    ],
 }
 
 
@@ -115,8 +122,10 @@ async def _add_stop(hass, *, query=None):
     assert result["step_id"] == "stop", result
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"stop_id": "S1"})
     assert result["step_id"] == "routes"
+    options = result["data_schema"].schema["lines"].config["options"]
+    assert [o["label"] for o in options] == ["50 → Pestszentlőrinc", "50 → Határ út M"]
     return await hass.config_entries.flow.async_configure(
-        result["flow_id"], {"route_ids": ["R50"], CONF_NAME: ""}
+        result["flow_id"], {"lines": [LINE_50], CONF_NAME: ""}
     )
 
 
@@ -135,7 +144,8 @@ async def test_full_flow_sensors_and_service(hass: HomeAssistant, aioclient_mock
 
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     dep_url = _calls(aioclient_mock, "departures")[-1][1]
-    assert dep_url.query.get("route_id") == "R50"
+    assert "route_id" not in dep_url.query
+    assert json.loads(dep_url.query.get("lines")) == [["50", "Pestszentlőrinc"]]
 
     states = {s.entity_id: s for s in hass.states.async_all("sensor")}
     print(sorted(states))
@@ -170,7 +180,7 @@ async def test_full_flow_sensors_and_service(hass: HomeAssistant, aioclient_mock
     assert result["step_id"] == "init"
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {"route_ids": [], "departures": 5, "horizon_min": 60, "scan_interval": 45},
+        {"lines": [], "departures": 5, "horizon_min": 60, "scan_interval": 45},
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -194,3 +204,43 @@ async def test_bad_server(hass: HomeAssistant, aioclient_mock) -> None:
         result["flow_id"], {CONF_URL: "ftp://x"}
     )
     assert result["errors"] == {"url": "invalid_url"}
+
+
+async def test_legacy_route_id_entry_preselects_its_line(hass: HomeAssistant, aioclient_mock) -> None:
+    """Korábbi verzióval felvett (route_id-szűrős) bejegyzés: a beállításokban a
+    viszonylata előre ki van jelölve, mentés után pedig viszonylatra szűr."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    _mock_server(aioclient_mock)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Határ út M – 50",
+        data={
+            CONF_URL: BASE,
+            "feed_id": "f1",
+            "feed_name": "Feed One",
+            "stop_id": "S1",
+            "stop_name": "Határ út M",
+            "route_ids": ["R50b"],
+            "route_labels": ["50"],
+        },
+        options={"departures": 10, "horizon_min": 180, "scan_interval": 60},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert _calls(aioclient_mock, "departures")[-1][1].query.get("route_id") == "R50b"
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    key = next(k for k in result["data_schema"].schema if str(k) == "lines")
+    assert key.default() == [LINE_50]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"lines": [LINE_50], "departures": 10, "horizon_min": 180, "scan_interval": 60},
+    )
+    await hass.async_block_till_done()
+    assert entry.options["lines"] == [["50", "Pestszentlőrinc"]]
+    assert entry.options["route_ids"] == []
+    dep_url = _calls(aioclient_mock, "departures")[-1][1]
+    assert "route_id" not in dep_url.query and "lines" in dep_url.query
+    assert await hass.config_entries.async_unload(entry.entry_id)

@@ -10,6 +10,8 @@ CONF_STOP_ID = "stop_id"
 CONF_STOP_NAME = "stop_name"
 CONF_ROUTE_IDS = "route_ids"
 CONF_ROUTE_LABELS = "route_labels"
+# Viszonylatok: [[járatnév, irány|None], …] — a `route_id`-k a szerveren oldódnak fel.
+CONF_LINES = "lines"
 
 CONF_DEPARTURES = "departures"
 CONF_HORIZON = "horizon_min"

@@ -48,8 +48,11 @@ A varázsló lépései:
    1 km-es körzetében lévő megállókat listázza.
 4. **Megálló kiválasztása**: az azonos nevű peronokat a járatok és az irány
    (→ végállomás) különbözteti meg.
-5. **Járatok**: egy vagy több járat, vagy egyik sem (akkor a megálló összes
-   járata). Itt nevet is adhatsz a bejegyzésnek.
+5. **Viszonylatok**: egy vagy több viszonylat (járat + irány, pl. „S60 →
+   Budapest-Keleti”), vagy egyik sem (akkor a megálló összes járata). A
+   menetrend-változatokat (a MÁV-nál vonatonként külön azonosító) a szerver
+   vonja össze, és a menetrend frissítése után az új változatok is maguktól
+   bekerülnek. Itt nevet is adhatsz a bejegyzésnek.
 
 Ugyanazt a megállót más járat-szűréssel többször is felveheted. Utólag a
 bejegyzés **Beállítások** gombjával módosítható:
@@ -171,8 +174,8 @@ Minden végpont GET, hitelesítés nélkül.
 |---|---|
 | `/api/v1/info` | API-verzió, aktív menetrendek |
 | `/api/v1/feeds/{feed}/stops?q=…` vagy `?lat=…&lon=…&radius_m=…` | megálló-keresés (név, kód vagy közelség) |
-| `/api/v1/feeds/{feed}/stops/{stop}` | megálló + járatai (iránnyal) |
-| `/api/v1/feeds/{feed}/stops/{stop}/departures?route_id=a,b&limit=10&horizon_min=180` | következő indulások élő késéssel |
+| `/api/v1/feeds/{feed}/stops/{stop}` | megálló + járatai (`routes`) és viszonylatai (`lines`: járatnév + irány, a változatok összevonva) |
+| `/api/v1/feeds/{feed}/stops/{stop}/departures?lines=[["S60","Budapest-Keleti"]]&limit=10&horizon_min=180` | következő indulások élő késéssel; szűrés viszonylatra (`lines`, URL-kódolt JSON) vagy azonosítóra (`route_id=a,b`) |
 
 ## Biztonság
 

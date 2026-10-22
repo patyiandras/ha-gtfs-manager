@@ -34,9 +34,9 @@
       },
       "routes": {
         "title": "Routes",
-        "description": "Stop: {stop}\n\nSelect the routes you are interested in. If none is selected, all routes of the stop are included.",
+        "description": "Stop: {stop}\n\nSelect the lines (route + direction) you are interested in. If none is selected, all routes of the stop are included.",
         "data": {
-          "route_ids": "Routes",
+          "lines": "Lines",
           "name": "Name (optional)"
         }
       }
@@ -61,7 +61,7 @@
       "init": {
         "title": "Options",
         "data": {
-          "route_ids": "Routes (empty = all)",
+          "lines": "Lines (empty = all)",
           "departures": "Number of departures in the list",
           "horizon_min": "Time window",
           "scan_interval": "Update interval"

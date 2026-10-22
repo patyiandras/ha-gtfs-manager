@@ -18,6 +18,7 @@ from .const import (
     CONF_DEPARTURES,
     CONF_FEED_ID,
     CONF_HORIZON,
+    CONF_LINES,
     CONF_ROUTE_IDS,
     CONF_SCAN_INTERVAL,
     CONF_STOP_ID,
@@ -173,11 +174,18 @@ class GtfsManagerCoordinator(DataUpdateCoordinator[StopData]):
             self.entry.options.get(CONF_ROUTE_IDS, self.entry.data.get(CONF_ROUTE_IDS)) or []
         )
 
+    @property
+    def lines(self) -> list[list[str | None]]:
+        return list(self.entry.options.get(CONF_LINES, self.entry.data.get(CONF_LINES)) or [])
+
     async def fetch(self, limit: int | None = None) -> StopData:
+        lines = self.lines
         payload = await self.api.departures(
             self.entry.data[CONF_FEED_ID],
             self.entry.data[CONF_STOP_ID],
-            route_ids=self.route_ids,
+            # Viszonylat-szűrő esetén a régi (azonosító-alapú) szűrő nem kell.
+            route_ids=None if lines else self.route_ids,
+            lines=lines or None,
             limit=limit or self.limit,
             horizon_min=self.horizon,
         )

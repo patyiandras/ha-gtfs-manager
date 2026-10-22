@@ -34,9 +34,9 @@
       },
       "routes": {
         "title": "Járatok",
-        "description": "Megálló: {stop}\n\nVálaszd ki, mely járatok indulásai érdekelnek. Ha egyet sem jelölsz be, a megálló összes járata szerepel.",
+        "description": "Megálló: {stop}\n\nVálaszd ki, mely viszonylatok (járat + irány) indulásai érdekelnek. Ha egyet sem jelölsz be, a megálló összes járata szerepel.",
         "data": {
-          "route_ids": "Járatok",
+          "lines": "Viszonylatok",
           "name": "Név (nem kötelező)"
         }
       }
@@ -61,7 +61,7 @@
       "init": {
         "title": "Beállítások",
         "data": {
-          "route_ids": "Járatok (üres = mind)",
+          "lines": "Viszonylatok (üres = mind)",
           "departures": "Indulások száma a listában",
           "horizon_min": "Időablak",
           "scan_interval": "Frissítés gyakorisága"

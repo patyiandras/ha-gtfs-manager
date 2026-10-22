@@ -26,7 +26,7 @@ MAX_TEXT_LEN = 200
 MAX_ID_LEN = 128
 MAX_FEEDS = 50
 MAX_STOPS = 100
-MAX_ROUTES = 200
+MAX_ROUTES = 1000
 MAX_DEPARTURES = 50
 
 KNOWN_MODES = frozenset(
@@ -112,6 +112,39 @@ def clean_route(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def clean_line(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """Viszonylat (kiírt járatnév + irány), a szerver `lines` tömbjéből."""
+    label = clean_text(raw.get("label"), 64)
+    if not label:
+        return None
+    mode = raw.get("mode")
+    return {
+        "label": label,
+        "direction": clean_text(raw.get("direction")),
+        "mode": mode if mode in KNOWN_MODES else "unknown",
+        "route_color": clean_color(raw.get("route_color")),
+        "variants": clean_int(raw.get("variants"), 0, 100_000) or 1,
+    }
+
+
+def lines_from_routes(routes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Tartalék régebbi szerverhez, amely még nem ad `lines`-t: helyben vonjuk össze."""
+    out: dict[tuple[str, str | None], dict[str, Any]] = {}
+    for r in routes:
+        key = (r["route_label"], r.get("direction"))
+        if key in out:
+            out[key]["variants"] += 1
+        else:
+            out[key] = {
+                "label": r["route_label"],
+                "direction": r.get("direction"),
+                "mode": r.get("mode", "unknown"),
+                "route_color": r.get("route_color"),
+                "variants": 1,
+            }
+    return list(out.values())
+
+
 def clean_stop(raw: dict[str, Any]) -> dict[str, Any] | None:
     stop_id = clean_id(raw.get("stop_id"))
     if stop_id is None:
@@ -124,6 +157,8 @@ def clean_stop(raw: dict[str, Any]) -> dict[str, Any] | None:
         "distance_m": clean_int(raw.get("distance_m"), 0, 100_000),
         "is_station": raw.get("is_station") is True,
         "routes": routes,
+        "lines": [l for l in (clean_line(x) for x in _dicts(raw.get("lines"), MAX_ROUTES)) if l]
+        or lines_from_routes(routes),
     }
 
 
@@ -248,8 +283,9 @@ class GtfsManagerApi:
         data = await self._get(f"/feeds/{_seg(feed_id)}/stops/{_seg(stop_id)}")
         if not isinstance(data, dict):
             raise ApiInvalid("Hibás megálló-válasz")
-        routes = _dicts(data.get("routes"), MAX_ROUTES)
-        return {"routes": [r for r in (clean_route(x) for x in routes) if r]}
+        routes = [r for r in (clean_route(x) for x in _dicts(data.get("routes"), MAX_ROUTES)) if r]
+        lines = [l for l in (clean_line(x) for x in _dicts(data.get("lines"), MAX_ROUTES)) if l]
+        return {"routes": routes, "lines": lines or lines_from_routes(routes)}
 
     async def departures(
         self,
@@ -257,6 +293,7 @@ class GtfsManagerApi:
         stop_id: str,
         *,
         route_ids: list[str] | None = None,
+        lines: list[list[str | None]] | None = None,
         limit: int | None = None,
         horizon_min: int | None = None,
     ) -> dict[str, Any]:
@@ -264,6 +301,7 @@ class GtfsManagerApi:
             f"/feeds/{_seg(feed_id)}/stops/{_seg(stop_id)}/departures",
             {
                 "route_id": ",".join(route_ids) if route_ids else None,
+                "lines": json.dumps(lines, ensure_ascii=False) if lines else None,
                 "limit": limit,
                 "horizon_min": horizon_min,
             },

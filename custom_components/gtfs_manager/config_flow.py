@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
 import logging
 from typing import Any
 from urllib.parse import urlsplit
@@ -43,6 +44,7 @@ from .const import (
     CONF_FEED_ID,
     CONF_FEED_NAME,
     CONF_HORIZON,
+    CONF_LINES,
     CONF_ROUTE_IDS,
     CONF_ROUTE_LABELS,
     CONF_SCAN_INTERVAL,
@@ -64,11 +66,32 @@ _LOGGER = logging.getLogger(__name__)
 CONF_QUERY = "query"
 
 
-def _route_option(r: dict[str, Any]) -> SelectOptionDict:
-    label = r.get("route_label") or r.get("route_id")
-    if r.get("direction"):
-        label = f"{label} → {r['direction']}"
-    return SelectOptionDict(value=str(r["route_id"]), label=str(label))
+def _line_value(line: dict[str, Any] | list[Any] | tuple[Any, ...]) -> str:
+    """Viszonylat → választó-érték (JSON: `["S60", "Budapest-Keleti"]`)."""
+    if isinstance(line, dict):
+        return json.dumps([line["label"], line.get("direction")], ensure_ascii=False)
+    return json.dumps([line[0], line[1] if len(line) > 1 else None], ensure_ascii=False)
+
+
+def _line_option(line: dict[str, Any]) -> SelectOptionDict:
+    text = line["label"]
+    if line.get("direction"):
+        text = f"{text} → {line['direction']}"
+    return SelectOptionDict(value=_line_value(line), label=text)
+
+
+def _chosen_lines(values: list[str], lines: list[dict[str, Any]]) -> list[list[str | None]]:
+    """A kiválasztott értékek közül csak a felkínáltak, rendezve."""
+    known = {_line_value(line) for line in lines}
+    return [json.loads(v) for v in sorted(set(values)) if v in known]
+
+
+def _unique_labels(lines: list[list[str | None]]) -> list[str]:
+    out: list[str] = []
+    for label, *_ in lines:
+        if label and label not in out:
+            out.append(label)
+    return out
 
 
 def _stop_label(s: dict[str, Any]) -> str:
@@ -76,13 +99,17 @@ def _stop_label(s: dict[str, Any]) -> str:
     parts = [s.get("stop_name") or s.get("stop_id")]
     if s.get("stop_desc"):
         parts[0] = f"{parts[0]} ({s['stop_desc']})"
-    routes = s.get("routes") or []
-    if routes:
-        names = [r.get("route_label") or r.get("route_id") for r in routes]
+    lines = s.get("lines") or []
+    if lines:
+        # A MÁV-nál egy viszonylat (S60) tucatnyi változat — a nevet egyszer írjuk ki.
+        names = _unique_labels([[line["label"]] for line in lines])
         shown = ", ".join(names[:10]) + (" …" if len(names) > 10 else "")
         parts.append(shown)
         # Az azonos nevű peronokat az IRÁNY különbözteti meg.
-        dirs = Counter(r["direction"] for r in routes if r.get("direction"))
+        dirs: Counter[str] = Counter()
+        for line in lines:
+            if line.get("direction"):
+                dirs[line["direction"]] += line.get("variants") or 1
         if dirs:
             parts.append("→ " + " / ".join(d for d, _ in dirs.most_common(2)))
     if s.get("distance_m") is not None:
@@ -104,7 +131,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         self._feed: dict[str, Any] | None = None
         self._stops: list[dict[str, Any]] = []
         self._stop: dict[str, Any] | None = None
-        self._routes: list[dict[str, Any]] = []
+        self._lines: list[dict[str, Any]] = []
 
     @staticmethod
     @callback
@@ -261,7 +288,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             except ApiError:
                 errors["base"] = "invalid_api"
             else:
-                self._routes = detail.get("routes") or []
+                self._lines = detail.get("lines") or []
                 return await self.async_step_routes()
 
         options = [SelectOptionDict(value=s["stop_id"], label=_stop_label(s)) for s in self._stops]
@@ -281,15 +308,11 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_routes(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         assert self._url and self._feed and self._stop
         if user_input is not None:
-            known = {r["route_id"] for r in self._routes}
-            route_ids = sorted(r for r in (user_input.get(CONF_ROUTE_IDS) or []) if r in known)
-            labels = [
-                r.get("route_label") or r["route_id"]
-                for r in self._routes
-                if r["route_id"] in route_ids
-            ]
+            lines = _chosen_lines(user_input.get(CONF_LINES) or [], self._lines)
+            labels = _unique_labels(lines)
             await self.async_set_unique_id(
-                f"{self._url}|{self._feed['id']}|{self._stop['stop_id']}|{','.join(route_ids)}"
+                f"{self._url}|{self._feed['id']}|{self._stop['stop_id']}|"
+                + json.dumps(lines, ensure_ascii=False)
             )
             self._abort_if_unique_id_configured()
             title = (user_input.get(CONF_NAME) or "").strip()[:100] or self._default_title(labels)
@@ -301,7 +324,8 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_FEED_NAME: self._feed.get("name") or self._feed["id"],
                     CONF_STOP_ID: self._stop["stop_id"],
                     CONF_STOP_NAME: self._stop.get("stop_name") or self._stop["stop_id"],
-                    CONF_ROUTE_IDS: route_ids,
+                    CONF_LINES: lines,
+                    CONF_ROUTE_IDS: [],
                     CONF_ROUTE_LABELS: labels,
                 },
                 options={
@@ -313,9 +337,9 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Optional(CONF_ROUTE_IDS, default=[]): SelectSelector(
+                vol.Optional(CONF_LINES, default=[]): SelectSelector(
                     SelectSelectorConfig(
-                        options=[_route_option(r) for r in self._routes],
+                        options=[_line_option(line) for line in self._lines],
                         multiple=True,
                         mode=SelectSelectorMode.LIST,
                     )
@@ -341,25 +365,41 @@ class GtfsManagerOptionsFlow(OptionsFlow):
         entry = self.config_entry
         coordinator = getattr(entry, "runtime_data", None)
         routes: list[dict[str, Any]] = []
+        lines: list[dict[str, Any]] = []
         if coordinator is not None:
             try:
                 detail = await coordinator.api.stop(entry.data[CONF_FEED_ID], entry.data[CONF_STOP_ID])
                 routes = detail.get("routes") or []
+                lines = detail.get("lines") or []
             except ApiError:
-                routes = []
+                lines = []
 
+        saved_lines = entry.options.get(CONF_LINES, entry.data.get(CONF_LINES)) or []
         current_routes = entry.options.get(CONF_ROUTE_IDS, entry.data.get(CONF_ROUTE_IDS)) or []
+        current_lines = list(saved_lines)
+        if not current_lines and current_routes:
+            # Korábbi (azonosító-alapú) bejegyzés: a régi szűrő viszonylatai.
+            current_lines = sorted(
+                {
+                    (r["route_label"], r.get("direction"))
+                    for r in routes
+                    if r["route_id"] in current_routes
+                },
+                key=lambda x: (x[0], x[1] or ""),
+            )
         if user_input is not None:
-            if routes and CONF_ROUTE_IDS in user_input:
-                known = {r["route_id"] for r in routes}
-                route_ids = sorted(r for r in user_input[CONF_ROUTE_IDS] if r in known)
+            if lines and CONF_LINES in user_input:
+                new_lines = _chosen_lines(user_input[CONF_LINES], lines)
+                new_routes: list[str] = []
             else:
-                # A járatlista most nem volt lekérhető, a mező nem is látszott:
-                # a meglévő szűrő marad (különben némán „minden járat" lenne).
-                route_ids = sorted(current_routes)
+                # A viszonylat-lista most nem volt lekérhető, a mező nem is
+                # látszott: a meglévő szűrő marad (különben némán „minden járat" lenne).
+                new_lines = list(saved_lines)
+                new_routes = sorted(current_routes)
             return self.async_create_entry(
                 data={
-                    CONF_ROUTE_IDS: route_ids,
+                    CONF_LINES: new_lines,
+                    CONF_ROUTE_IDS: new_routes,
                     CONF_DEPARTURES: int(user_input[CONF_DEPARTURES]),
                     CONF_HORIZON: int(user_input[CONF_HORIZON]),
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
@@ -367,10 +407,12 @@ class GtfsManagerOptionsFlow(OptionsFlow):
             )
 
         fields: dict[Any, Any] = {}
-        if routes:
-            fields[vol.Optional(CONF_ROUTE_IDS, default=list(current_routes))] = SelectSelector(
+        if lines:
+            known = {_line_value(line) for line in lines}
+            default = [v for v in (_line_value(list(x)) for x in current_lines) if v in known]
+            fields[vol.Optional(CONF_LINES, default=default)] = SelectSelector(
                 SelectSelectorConfig(
-                    options=[_route_option(r) for r in routes],
+                    options=[_line_option(line) for line in lines],
                     multiple=True,
                     mode=SelectSelectorMode.LIST,
                 )
