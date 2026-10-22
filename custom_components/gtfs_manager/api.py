@@ -51,6 +51,23 @@ class ApiNotFound(ApiError):
     """404 — nincs ilyen menetrend / megálló, vagy a szerveren nincs `/api/v1`."""
 
 
+class ApiHttpError(ApiError):
+    """Nem várt HTTP-státusz (pl. 5xx, Cloudflare-blokk). A `status` a varázsló
+    hibaüzenetébe kerül, hogy a felhasználó lássa, mi történt."""
+
+    def __init__(self, url: str, status: int) -> None:
+        super().__init__(f"HTTP {status}: {url}")
+        self.status = status
+
+
+class ApiMaintenance(ApiHttpError):
+    """503 — a szerver karbantartás (pl. frissítés) alatt áll; később újra."""
+
+
+class ApiRateLimited(ApiHttpError):
+    """429 — túl sok kérés erről a címről; később újra."""
+
+
 class ApiInvalid(ApiError):
     """A válasz nem a várt formátumú (nem GTFS Manager, más API-verzió, túl nagy)."""
 
@@ -239,8 +256,12 @@ class GtfsManagerApi:
                         raise ApiRedirect(url, resp.headers.get("Location"))
                     if resp.status == 404:
                         raise ApiNotFound(url)
+                    if resp.status == 503:
+                        raise ApiMaintenance(url, resp.status)
+                    if resp.status == 429:
+                        raise ApiRateLimited(url, resp.status)
                     if resp.status >= 400:
-                        raise ApiError(f"HTTP {resp.status}: {url}")
+                        raise ApiHttpError(url, resp.status)
                     body = await resp.content.read(MAX_RESPONSE_BYTES + 1)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ApiConnectionError(f"{url}: {err}") from err

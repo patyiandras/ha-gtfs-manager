@@ -150,3 +150,15 @@ async def test_options_keep_route_filter_when_server_unreachable(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options["route_ids"] == ["R50"]
     await hass.async_block_till_done()
+
+
+async def test_server_errors_are_reported_precisely(hass: HomeAssistant, aioclient_mock) -> None:
+    """Karbantartás / korlát / egyéb HTTP-hiba nem „rossz cím"-ként jelenik meg."""
+    for status, expected in ((503, "maintenance"), (429, "rate_limited"), (502, "http_error"), (404, "invalid_api")):
+        aioclient_mock.clear_requests()
+        aioclient_mock.get(f"{BASE}/api/v1/info", status=status)
+        result = await _start(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_URL: BASE})
+        assert result["errors"] == {"base": expected}, (status, result["errors"])
+        if expected == "http_error":
+            assert result["description_placeholders"]["status"] == "502"

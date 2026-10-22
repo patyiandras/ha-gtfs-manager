@@ -35,6 +35,10 @@ from homeassistant.helpers.selector import (
 from .api import (
     ApiConnectionError,
     ApiError,
+    ApiHttpError,
+    ApiMaintenance,
+    ApiNotFound,
+    ApiRateLimited,
     ApiRedirect,
     GtfsManagerApi,
     normalize_url,
@@ -151,6 +155,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
     # ── 1. Szerver ──────────────────────────────────────────────────────────
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        detail = ""
         if user_input is not None:
             url = normalize_url(user_input[CONF_URL])
             if url is None:
@@ -160,9 +165,22 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     api, info = await self._probe(url)
                 except ApiRedirect:
                     errors["base"] = "redirect_other_host"
-                except ApiConnectionError:
+                except ApiConnectionError as err:
+                    _LOGGER.warning("A GTFS Manager szerver nem érhető el: %s", err)
                     errors["base"] = "cannot_connect"
-                except ApiError:
+                except ApiMaintenance:
+                    errors["base"] = "maintenance"
+                except ApiRateLimited:
+                    errors["base"] = "rate_limited"
+                except ApiNotFound as err:
+                    _LOGGER.warning("Nincs /api/v1 ezen a címen (404): %s", err)
+                    errors["base"] = "invalid_api"
+                except ApiHttpError as err:
+                    _LOGGER.warning("A GTFS Manager szerver hibát adott: %s", err)
+                    errors["base"] = "http_error"
+                    detail = str(err.status)
+                except ApiError as err:
+                    _LOGGER.warning("Nem GTFS Manager válasz: %s", err)
                     errors["base"] = "invalid_api"
                 except Exception:  # noqa: BLE001
                     _LOGGER.exception("Váratlan hiba a szerver ellenőrzésekor")
@@ -190,7 +208,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             errors=errors,
             # Csak minta a súgószövegben (a HA a fordításban nem enged URL-t).
-            description_placeholders={"example": "https://transit.example.org"},
+            description_placeholders={"example": "https://transit.example.org", "status": detail},
         )
 
     async def _probe(self, url: str) -> tuple[GtfsManagerApi, dict[str, Any]]:
