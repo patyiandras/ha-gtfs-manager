@@ -1,5 +1,7 @@
 # GTFS Manager – Home Assistant integráció
 
+<img src="custom_components/gtfs_manager/brand/icon@2x.png" alt="GTFS Manager ikon" width="128" align="right">
+
 Élő (valós idejű) indulási idők megállónként, egy **GTFS Manager** szerver
 `/api/v1` végpontjáról. Megállót, vagy megálló + járat párost lehet felvenni.
 Minden felvett megálló három szenzort kap, és van egy szolgáltatás is, amely
@@ -33,6 +35,11 @@ használható (Google Home, Gemini, Assist).
 3. Indítsd újra a Home Assistantot.
 4. **Beállítások → Eszközök és szolgáltatások → Integráció hozzáadása →
    GTFS Manager**.
+
+Az integráció ikonja a `custom_components/gtfs_manager/brand/` mappában van.
+A Home Assistant 2026.3-tól ezt maga jeleníti meg. A régi HACS-felület
+helyőrzőt mutat; a HACS utódja, a Marketplace (HA 2026.11-től beépítve) már
+ennek a mappának az ikonját használja.
 
 Kézi telepítés: másold a `custom_components/gtfs_manager` mappát a HA
 `config/custom_components/` mappájába, majd indítsd újra a HA-t.
