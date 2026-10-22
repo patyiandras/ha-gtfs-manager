@@ -75,6 +75,27 @@ def test_build_speech():
     assert s == "Határ út M megállóból a következő 60 percben nincs indulás.", s
 
 
+
+def test_delay_speech():
+    deps = [
+        dep("50", "tram", 7, headsign="Pestszentlőrinc", delay=300, clock="15:36"),
+        dep("50", "tram", 9, delay=60, clock="15:38"),
+        dep("3", "bus", 12, canceled=True, clock="15:40") | {"sched_clock": "15:40"},
+        dep("52", "bus", 20, rt=False, delay=None, clock="15:50"),
+    ]
+    s = speech.build_delay_speech(deps, threshold_min=3)
+    assert s == (
+        "Az 50-es villamos Pestszentlőrinc felé 5 perc késéssel indul, 15 óra 36 perckor. "
+        "A 3-as busz 15 óra 40 perces menete elmarad."
+    ), s
+    assert speech.build_delay_speech(deps[1:2] + deps[3:], threshold_min=3) == "Nincs jelentős késés."
+    assert speech.is_delayed(deps[1], 1) and not speech.is_delayed(deps[1], 2)
+    assert speech.at_clock("15:00") == "15 órakor"
+    assert speech.clock_adjective("15:00") == "15 órás"
+    # Sietés nem késés.
+    assert not speech.is_delayed(dep("50", "tram", 1, delay=-300), 1)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

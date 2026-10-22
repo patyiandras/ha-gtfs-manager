@@ -16,12 +16,16 @@ CONF_LINES = "lines"
 CONF_DEPARTURES = "departures"
 CONF_HORIZON = "horizon_min"
 CONF_SCAN_INTERVAL = "scan_interval"
+# Ennyi perc késéstől számít „késésnek" a Késés van bináris szenzornál.
+CONF_DELAY_THRESHOLD = "delay_threshold"
 
 DEFAULT_DEPARTURES = 10
 DEFAULT_HORIZON = 180
 DEFAULT_SCAN_INTERVAL = 60
 MIN_SCAN_INTERVAL = 30
 MAX_SCAN_INTERVAL = 600
+DEFAULT_DELAY_THRESHOLD = 3
+MAX_DELAY_THRESHOLD = 60
 
 # A szerver ennyit enged egy kérésben (lásd a szerver `/api/v1` dokumentációját).
 MAX_DEPARTURES = 50

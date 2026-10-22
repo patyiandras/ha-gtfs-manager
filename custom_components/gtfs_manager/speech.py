@@ -158,3 +158,63 @@ def build_speech(
                 f"Utána {route_phrase(dep.get('route_label', ''), dep.get('mode'))} {when}."
             )
     return " ".join(parts)
+
+
+def is_delayed(dep: dict[str, Any], threshold_min: int) -> bool:
+    """Élő adat szerint legalább `threshold_min` percet késik (sietés nem számít)."""
+    delay = dep.get("delay_sec")
+    return bool(dep.get("realtime")) and delay is not None and delay >= threshold_min * 60
+
+
+def _clock_parts(clock: str) -> tuple[int, int] | None:
+    hh, _, mm = (clock or "").partition(":")
+    if not hh.isdigit() or not (mm or "0").isdigit():
+        return None
+    return int(hh), int(mm or 0)
+
+
+def at_clock(clock: str) -> str:
+    """„15:36" → „15 óra 36 perckor", „15:00" → „15 órakor"."""
+    p = _clock_parts(clock)
+    if p is None:
+        return clock
+    return f"{p[0]} óra {p[1]} perckor" if p[1] else f"{p[0]} órakor"
+
+
+def clock_adjective(clock: str) -> str:
+    """„15:40" → „15 óra 40 perces", „15:00" → „15 órás" (a menete elé)."""
+    p = _clock_parts(clock)
+    if p is None:
+        return clock
+    return f"{p[0]} óra {p[1]} perces" if p[1] else f"{p[0]} órás"
+
+
+def build_delay_speech(
+    departures: list[dict[str, Any]], threshold_min: int, max_items: int = 3
+) -> str:
+    """Pl. „Az 50-es villamos Pestszentlőrinc felé 5 perc késéssel indul, 15 óra
+    36 perckor. A 3-as busz 15 óra 40 perces menete elmarad."
+
+    A bemenet ugyanaz, mint a `build_speech`-é, plusz `sched_clock` (a
+    menetrendi indulás „HH:MM"). Ha nincs késés vagy elmaradó menet:
+    „Nincs jelentős késés."
+    """
+    hits = [d for d in departures if d.get("canceled") or is_delayed(d, threshold_min)]
+    if not hits:
+        return "Nincs jelentős késés."
+    parts: list[str] = []
+    for dep in hits[:max_items]:
+        phrase = route_phrase(dep.get("route_label", ""), dep.get("mode"))
+        if dep.get("canceled"):
+            sched = clock_adjective(dep.get("sched_clock") or dep.get("clock", ""))
+            parts.append(_cap(f"{phrase} {sched} menete elmarad."))
+            continue
+        toward = f" {dep['headsign']} felé" if dep.get("headsign") else ""
+        mins = round((dep.get("delay_sec") or 0) / 60)
+        parts.append(
+            _cap(f"{phrase}{toward} {mins} perc késéssel indul, {at_clock(dep.get('clock', ''))}.")
+        )
+    rest = len(hits) - max_items
+    if rest > 0:
+        parts.append(f"Továbbá még {rest} járat késik vagy elmarad.")
+    return " ".join(parts)

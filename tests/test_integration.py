@@ -156,6 +156,10 @@ async def test_full_flow_sensors_and_service(hass: HomeAssistant, aioclient_mock
         "Az 50-es villamos 4 perc múlva indul Pestszentlőrinc felé, 2 perc késéssel."
     ), nxt.attributes["speech"]
     assert states["sensor.hatar_ut_m_50_next_departure_minutes"].state == "4"
+    # Késés: a következő indulás +2 perc; a 3 perces alapküszöb alatt → nincs riasztás.
+    assert states["sensor.hatar_ut_m_50_delay"].state == "2"
+    alert = hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert")
+    assert alert.state == "off" and alert.attributes["speech"] == "Nincs jelentős késés."
     table = states["sensor.hatar_ut_m_50_timetable"]
     assert table.state == "2"
     assert len(table.attributes["departures"]) == 2
@@ -243,4 +247,51 @@ async def test_legacy_route_id_entry_preselects_its_line(hass: HomeAssistant, ai
     assert entry.options["route_ids"] == []
     dep_url = _calls(aioclient_mock, "departures")[-1][1]
     assert "route_id" not in dep_url.query and "lines" in dep_url.query
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_delay_alert_threshold(hass: HomeAssistant, aioclient_mock) -> None:
+    """A küszöb lejjebb vételével a +2 perces késés már riaszt, mondattal."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    _mock_server(aioclient_mock)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Határ út M – 50",
+        data={
+            CONF_URL: BASE,
+            "feed_id": "f1",
+            "feed_name": "Feed One",
+            "stop_id": "S1",
+            "stop_name": "Határ út M",
+            "lines": [["50", "Pestszentlőrinc"]],
+            "route_ids": [],
+            "route_labels": ["50"],
+        },
+        options={"departures": 10, "horizon_min": 180, "scan_interval": 60, "delay_threshold": 2},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    alert = hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert")
+    assert alert.state == "on"
+    assert alert.attributes["delayed_count"] == 1
+    assert alert.attributes["max_delay_min"] == 2
+    assert alert.attributes["speech"].startswith(
+        "Az 50-es villamos Pestszentlőrinc felé 2 perc késéssel indul,"
+    ), alert.attributes["speech"]
+
+    resp = await hass.services.async_call(
+        DOMAIN,
+        "get_departures",
+        {"config_entry_id": entry.entry_id},
+        blocking=True,
+        return_response=True,
+    )
+    assert len(resp["delayed"]) == 1 and resp["delay_speech"] == alert.attributes["speech"]
+
+    # Élő adat nélküli menet késése ismeretlen, nem 0.
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert any(str(k) == "delay_threshold" for k in result["data_schema"].schema)
     assert await hass.config_entries.async_unload(entry.entry_id)

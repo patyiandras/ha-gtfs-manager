@@ -40,6 +40,7 @@ from .api import (
     normalize_url,
 )
 from .const import (
+    CONF_DELAY_THRESHOLD,
     CONF_DEPARTURES,
     CONF_FEED_ID,
     CONF_FEED_NAME,
@@ -50,10 +51,12 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    DEFAULT_DELAY_THRESHOLD,
     DEFAULT_DEPARTURES,
     DEFAULT_HORIZON,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_DELAY_THRESHOLD,
     MAX_DEPARTURES,
     MAX_HORIZON,
     MAX_SCAN_INTERVAL,
@@ -332,6 +335,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_DEPARTURES: DEFAULT_DEPARTURES,
                     CONF_HORIZON: DEFAULT_HORIZON,
                     CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                    CONF_DELAY_THRESHOLD: DEFAULT_DELAY_THRESHOLD,
                 },
             )
 
@@ -403,6 +407,9 @@ class GtfsManagerOptionsFlow(OptionsFlow):
                     CONF_DEPARTURES: int(user_input[CONF_DEPARTURES]),
                     CONF_HORIZON: int(user_input[CONF_HORIZON]),
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
+                    CONF_DELAY_THRESHOLD: int(
+                        user_input.get(CONF_DELAY_THRESHOLD, DEFAULT_DELAY_THRESHOLD)
+                    ),
                 }
             )
 
@@ -446,6 +453,18 @@ class GtfsManagerOptionsFlow(OptionsFlow):
                         step=5,
                         mode=NumberSelectorMode.BOX,
                         unit_of_measurement="s",
+                    )
+                ),
+                vol.Required(
+                    CONF_DELAY_THRESHOLD,
+                    default=entry.options.get(CONF_DELAY_THRESHOLD, DEFAULT_DELAY_THRESHOLD),
+                ): NumberSelector(
+                    NumberSelectorConfig(
+                        min=1,
+                        max=MAX_DELAY_THRESHOLD,
+                        step=1,
+                        mode=NumberSelectorMode.BOX,
+                        unit_of_measurement="perc",
                     )
                 ),
             }

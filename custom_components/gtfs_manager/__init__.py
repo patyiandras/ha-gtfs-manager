@@ -25,7 +25,7 @@ from .const import (
 )
 from .coordinator import GtfsManagerCoordinator
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -63,6 +63,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         result: dict[str, Any] = {
             "stop": data.stop_name,
             "speech": data.speech(coordinator.horizon),
+            # Csak a késések / elmaradó menetek (a beállított küszöb szerint).
+            "delay_speech": data.delay_speech(coordinator.delay_threshold),
+            "delayed": [d.as_dict(now) for d in data.delayed(coordinator.delay_threshold)],
             "departures": [d.as_dict(now) for d in data.departures],
         }
         return result

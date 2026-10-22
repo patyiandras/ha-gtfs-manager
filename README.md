@@ -17,7 +17,9 @@ használható (Google Home, Gemini, Assist).
 |---|---|---|
 | `sensor.<megálló>_kovetkezo_indulas` | a következő indulás **várható** időpontja (timestamp) | `route`, `headsign`, `scheduled`, `expected`, `minutes`, `delay_min`, `realtime`, `speech` |
 | `sensor.<megálló>_kovetkezo_indulas_perc` | hány perc múlva indul | `route`, `headsign`, `realtime` |
+| `sensor.<megálló>_keses` | a következő indulás késése percben (negatív = korábban jön; ismeretlen, ha nincs róla élő adat) | `route`, `headsign`, `scheduled`, `expected` |
 | `sensor.<megálló>_menetrend` | indulások száma az időablakban | `departures` (lista), `speech` |
+| `binary_sensor.<megálló>_keses_van` | **be**, ha a listában valamelyik indulás legalább a küszöbnyit (alapból 3 perc) késik, vagy elmarad | `delayed_count`, `canceled_count`, `max_delay_min`, `items`, `speech` |
 
 - A **késés** a szerver élő adataiból jön (saját követett járművek, külső
   GTFS-RealTime források). Ha egy menetről nincs élő adat, a menetrendi
@@ -66,7 +68,8 @@ bejegyzés **Beállítások** gombjával módosítható:
 - a járat-szűrés,
 - a lista hossza (1–50),
 - az időablak (10–720 perc, alapértelmezés 180),
-- a frissítés gyakorisága (30–600 mp, alapértelmezés 60).
+- a frissítés gyakorisága (30–600 mp, alapértelmezés 60),
+- a késés-küszöb (1–60 perc, alapértelmezés 3) a „Késés van” szenzorhoz.
 
 ## Szolgáltatás: `gtfs_manager.get_departures`
 
@@ -77,6 +80,11 @@ stop: Határ út M
 speech: >-
   Az 50-es villamos 3 perc múlva indul Pestszentlőrinc, Béke tér felé, 2 perc
   késéssel. Utána 9 perc múlva jön a következő.
+delay_speech: Az 50-es villamos Pestszentlőrinc, Béke tér felé 4 perc késéssel indul, 15 óra 36 perckor.
+delayed:          # csak a küszöbnél jobban késő / elmaradó indulások
+  - route: "50"
+    delay_min: 4
+    # … (ugyanazok a mezők, mint a departures elemeinél)
 departures:
   - route: "50"
     mode: tram
@@ -108,6 +116,40 @@ content: >
   · {{ d.minutes }} perc
   {% endfor %}
 ```
+
+### Késés bemondása, ha baj van
+
+A „Késés van” bináris szenzor bekapcsolásakor a `speech` attribútumát
+olvastatja fel. Ebben a példában csak hétköznap reggel, és csak akkor, ha
+otthon vagy:
+
+```yaml
+automation:
+  - alias: Késés-figyelmeztetés reggel
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.gyomro_s60_g60_keses_van
+        to: "on"
+    conditions:
+      - condition: time
+        after: "06:00:00"
+        before: "09:00:00"
+        weekday: [mon, tue, wed, thu, fri]
+      - condition: state
+        entity_id: person.en
+        state: home
+    actions:
+      - action: tts.speak
+        target:
+          entity_id: tts.google_translate_hu_hu
+        data:
+          media_player_entity_id: media_player.nappali_hangszoro
+          message: "{{ state_attr('binary_sensor.gyomro_s60_g60_keses_van', 'speech') }}"
+```
+
+Indulás előtt egy szkriptből is rákérdezhetsz: a `get_departures`
+válaszának `delay_speech` mezője ugyanezt a mondatot adja, a `delayed` lista
+üres, ha nincs gond.
 
 ### „Mikor jön az 50-es?” – válasz a Google/Nest hangszórón
 

@@ -64,7 +64,8 @@
           "lines": "Viszonylatok (üres = mind)",
           "departures": "Indulások száma a listában",
           "horizon_min": "Időablak",
-          "scan_interval": "Frissítés gyakorisága"
+          "scan_interval": "Frissítés gyakorisága",
+          "delay_threshold": "Késés-küszöb"
         }
       }
     }
@@ -79,13 +80,21 @@
       },
       "timetable": {
         "name": "Menetrend"
+      },
+      "delay": {
+        "name": "Késés"
+      }
+    },
+    "binary_sensor": {
+      "delay_alert": {
+        "name": "Késés van"
       }
     }
   },
   "services": {
     "get_departures": {
       "name": "Indulások lekérése",
-      "description": "Friss indulási lista egy felvett megállóhoz, felolvasható magyar mondattal (speech).",
+      "description": "Friss indulási lista egy felvett megállóhoz, felolvasható magyar mondattal (speech), valamint a késések / elmaradó menetek külön listájával és mondatával (delayed, delay_speech).",
       "fields": {
         "config_entry_id": {
           "name": "Megálló",

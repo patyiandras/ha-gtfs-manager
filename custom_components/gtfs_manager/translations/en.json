@@ -64,7 +64,8 @@
           "lines": "Lines (empty = all)",
           "departures": "Number of departures in the list",
           "horizon_min": "Time window",
-          "scan_interval": "Update interval"
+          "scan_interval": "Update interval",
+          "delay_threshold": "Delay threshold"
         }
       }
     }
@@ -79,13 +80,21 @@
       },
       "timetable": {
         "name": "Timetable"
+      },
+      "delay": {
+        "name": "Delay"
+      }
+    },
+    "binary_sensor": {
+      "delay_alert": {
+        "name": "Delay alert"
       }
     }
   },
   "services": {
     "get_departures": {
       "name": "Get departures",
-      "description": "Fresh departure list for a configured stop, with a spoken Hungarian sentence (speech).",
+      "description": "Fresh departure list for a configured stop, with a spoken Hungarian sentence (speech), plus the delayed / cancelled departures and their sentence (delayed, delay_speech).",
       "fields": {
         "config_entry_id": {
           "name": "Stop",

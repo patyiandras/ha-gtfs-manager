@@ -1,4 +1,4 @@
-"""Szenzorok: következő indulás (időpont és perc) + a közeli menetrend."""
+"""Szenzorok: következő indulás (időpont, perc, késés) + a közeli menetrend."""
 
 from __future__ import annotations
 
@@ -28,12 +28,15 @@ async def async_setup_entry(
         [
             NextDepartureSensor(coordinator),
             NextDepartureMinutesSensor(coordinator),
+            DelaySensor(coordinator),
             TimetableSensor(coordinator),
         ]
     )
 
 
-class _Base(CoordinatorEntity[GtfsManagerCoordinator], SensorEntity):
+class GtfsManagerEntity(CoordinatorEntity[GtfsManagerCoordinator]):
+    """Közös alap: eszköz (megálló), egyedi azonosító, fordítható név."""
+
     _attr_has_entity_name = True
 
     def __init__(self, coordinator: GtfsManagerCoordinator, key: str) -> None:
@@ -54,6 +57,8 @@ class _Base(CoordinatorEntity[GtfsManagerCoordinator], SensorEntity):
     def _next(self) -> Departure | None:
         return self.coordinator.data.next if self.coordinator.data else None
 
+
+class _Base(GtfsManagerEntity, SensorEntity):
     @property
     def icon(self) -> str:
         nxt = self._next
@@ -125,6 +130,45 @@ class NextDepartureMinutesSensor(_Base):
             "route": nxt.route_label,
             "headsign": nxt.headsign,
             "realtime": nxt.realtime,
+        }
+
+
+class DelaySensor(_Base):
+    """A következő indulás késése percben (negatív = korábban jön).
+
+    Ha a menetről nincs élő adat, az állapot ismeretlen — a „0 perc" azt
+    állítaná, hogy pontos, holott nem tudjuk.
+    """
+
+    _attr_native_unit_of_measurement = UnitOfTime.MINUTES
+    _attr_suggested_display_precision = 0
+
+    def __init__(self, coordinator: GtfsManagerCoordinator) -> None:
+        super().__init__(coordinator, "delay")
+
+    @property
+    def icon(self) -> str:
+        return "mdi:clock-alert-outline"
+
+    @property
+    def native_value(self) -> int | None:
+        nxt = self._next
+        if not nxt or not nxt.realtime or nxt.delay_sec is None:
+            return None
+        return round(nxt.delay_sec / 60)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        nxt = self._next
+        if not nxt:
+            return {}
+        d = nxt.as_dict(dt_util.utcnow())
+        return {
+            "route": d["route"],
+            "headsign": d["headsign"],
+            "scheduled": d["scheduled"],
+            "expected": d["expected"],
+            "realtime": d["realtime"],
         }
 
 

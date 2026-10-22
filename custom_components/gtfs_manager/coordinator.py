@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import ApiConnectionError, ApiError, ApiNotFound, GtfsManagerApi
 from .const import (
+    CONF_DELAY_THRESHOLD,
     CONF_DEPARTURES,
     CONF_FEED_ID,
     CONF_HORIZON,
@@ -23,12 +24,13 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_STOP_ID,
     CONF_STOP_NAME,
+    DEFAULT_DELAY_THRESHOLD,
     DEFAULT_DEPARTURES,
     DEFAULT_HORIZON,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .speech import build_speech
+from .speech import build_delay_speech, build_speech, is_delayed
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -106,6 +108,7 @@ class Departure:
             "headsign": self.headsign,
             "minutes": self.minutes(now),
             "clock": dt_util.as_local(self.expected).strftime("%H:%M"),
+            "sched_clock": dt_util.as_local(self.scheduled).strftime("%H:%M"),
             "delay_sec": self.delay_sec,
             "realtime": self.realtime,
             "canceled": self.canceled,
@@ -122,6 +125,19 @@ class StopData:
     @property
     def next(self) -> Departure | None:
         return next((d for d in self.departures if not d.canceled), None)
+
+    def delayed(self, threshold_min: int) -> list[Departure]:
+        """A küszöbnél jobban késő vagy elmaradó indulások (sorrendben)."""
+        now = dt_util.utcnow()
+        return [
+            d
+            for d in self.departures
+            if d.canceled or is_delayed(d.speech_input(now), threshold_min)
+        ]
+
+    def delay_speech(self, threshold_min: int) -> str:
+        now = dt_util.utcnow()
+        return build_delay_speech([d.speech_input(now) for d in self.departures], threshold_min)
 
     def speech(self, horizon_min: int | None = None) -> str:
         now = dt_util.utcnow()
@@ -167,6 +183,10 @@ class GtfsManagerCoordinator(DataUpdateCoordinator[StopData]):
     @property
     def horizon(self) -> int:
         return int(self.entry.options.get(CONF_HORIZON, DEFAULT_HORIZON))
+
+    @property
+    def delay_threshold(self) -> int:
+        return int(self.entry.options.get(CONF_DELAY_THRESHOLD, DEFAULT_DELAY_THRESHOLD))
 
     @property
     def route_ids(self) -> list[str]:
