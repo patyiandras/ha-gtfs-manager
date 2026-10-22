@@ -215,7 +215,10 @@ def normalize_url(raw: str) -> str | None:
 
     Séma nélkül `https://`-t feltételez. Érvénytelen bemenetre `None`.
     """
-    url = (raw or "").strip()
+    # Bemásolásnál / előtöltésnél becsúszó szóköz és láthatatlan karakter ne
+    # rontsa el a címet („menetrend.example.org" és „https://…/" is legyen jó).
+    url = _UNSAFE_CHARS.sub("", raw or "")
+    url = "".join(url.split())
     if not url:
         return None
     if "://" not in url:
@@ -236,7 +239,17 @@ def normalize_url(raw: str) -> str | None:
         if path.endswith(suffix):
             path = path[: -len(suffix)]
             break
-    return f"{parts.scheme}://{parts.netloc}{path}"
+    host = parts.hostname.lower()
+    if ":" in host:  # IPv6-literál: a szögletes zárójel kell
+        host = f"[{host}]"
+    netloc = host + (f":{parts.port}" if parts.port else "")
+    return f"{parts.scheme.lower()}://{netloc}{path}"
+
+
+def display_url(url: str) -> str:
+    """A felhasználónak mutatott alak: HTTPS esetén séma nélkül
+    (`menetrend.example.org`), egyébként változatlanul."""
+    return url[len("https://"):] if url.startswith("https://") else url
 
 
 def _seg(value: str) -> str:

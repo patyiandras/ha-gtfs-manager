@@ -112,6 +112,36 @@ def test_normalize_url() -> None:
     assert normalize_url("file:///etc/passwd") is None
     assert normalize_url("javascript:alert(1)") is None
     assert normalize_url("") is None
+    # Bármelyik alak ugyanarra a címre vezet.
+    for raw in (
+        "menetrend.example.org",
+        "https://menetrend.example.org",
+        "https://menetrend.example.org/",
+        "  HTTPS://Menetrend.Example.org/  ",
+        "​menetrend.example.org​",
+        "https://menetrend.example.org/api/v1/info",
+    ):
+        assert normalize_url(raw) == "https://menetrend.example.org", raw
+    assert normalize_url("http://[::1]:3000") == "http://[::1]:3000"
+
+
+async def test_prefilled_url_works_unchanged(hass: HomeAssistant, aioclient_mock) -> None:
+    """Második megállónál az előtöltött cím (változtatás nélkül elküldve) is jó,
+    és séma nélkül jelenik meg."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    MockConfigEntry(domain=DOMAIN, data={CONF_URL: BASE, "stop_id": "X"}).add_to_hass(hass)
+    aioclient_mock.get(
+        f"{BASE}/api/v1/info", json={"api_version": 1, "feeds": [{"id": "f1", "name": "F"}]}
+    )
+    result = await _start(hass)
+    key = next(k for k in result["data_schema"].schema if str(k) == CONF_URL)
+    suggested = key.description["suggested_value"]
+    assert suggested == "transit.example.org"
+    for value in (suggested, BASE, BASE + "/"):
+        flow = await _start(hass)
+        flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {CONF_URL: value})
+        assert flow["step_id"] == "stop_search", (value, flow)
 
 
 async def test_options_keep_route_filter_when_server_unreachable(

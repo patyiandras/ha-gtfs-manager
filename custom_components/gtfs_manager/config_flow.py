@@ -28,8 +28,6 @@ from homeassistant.helpers.selector import (
     SelectSelectorConfig,
     SelectSelectorMode,
     TextSelector,
-    TextSelectorConfig,
-    TextSelectorType,
 )
 
 from .api import (
@@ -42,6 +40,7 @@ from .api import (
     ApiRateLimited,
     ApiRedirect,
     GtfsManagerApi,
+    display_url,
     normalize_url,
 )
 from .const import (
@@ -150,7 +149,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         """A már felvett megállók szerver-címe — kényelmi kitöltés, nem beégetett alapérték."""
         for entry in self._async_current_entries(include_ignore=False):
             if entry.data.get(CONF_URL):
-                return entry.data[CONF_URL]
+                return display_url(entry.data[CONF_URL])
         return None
 
     # ── 1. Szerver ──────────────────────────────────────────────────────────
@@ -202,7 +201,9 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         suggested = (user_input or {}).get(CONF_URL) or self._known_url()
         schema = self.add_suggested_values_to_schema(
             vol.Schema(
-                {vol.Required(CONF_URL): TextSelector(TextSelectorConfig(type=TextSelectorType.URL))}
+                # Sima szövegmező: a böngésző URL-mezője a séma nélküli címet
+                # („menetrend.example.org") hibásnak tartaná.
+                {vol.Required(CONF_URL): TextSelector()}
             ),
             {CONF_URL: suggested} if suggested else {},
         )
@@ -211,7 +212,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             errors=errors,
             # Csak minta a súgószövegben (a HA a fordításban nem enged URL-t).
-            description_placeholders={"example": "https://transit.example.org", "status": detail},
+            description_placeholders={"example": "menetrend.example.org", "status": detail},
         )
 
     async def _probe(self, url: str) -> tuple[GtfsManagerApi, dict[str, Any]]:
