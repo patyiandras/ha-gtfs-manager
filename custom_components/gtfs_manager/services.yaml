@@ -1,0 +1,14 @@
+get_departures:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: gtfs_manager
+    limit:
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 50
+          mode: box

@@ -1,0 +1,99 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GTFS Manager szerver",
+        "description": "Add meg a GTFS Manager példány címét (pl. https://menetrend.example.org). A szerver /api/v1 végpontját használjuk.",
+        "data": {
+          "url": "Szerver címe"
+        },
+        "data_description": {
+          "url": "Séma nélkül https:// lesz előtte."
+        }
+      },
+      "feed": {
+        "title": "Menetrend",
+        "description": "Melyik menetrend megállóját szeretnéd felvenni?",
+        "data": {
+          "feed_id": "Menetrend"
+        }
+      },
+      "stop_search": {
+        "title": "Megálló keresése",
+        "description": "Menetrend: {feed}. Írd be a megálló nevét (vagy kódját). Ha üresen hagyod, az otthonod {radius} m-es körzetében lévő megállókat listázzuk.",
+        "data": {
+          "query": "Megálló neve"
+        }
+      },
+      "stop": {
+        "title": "Megálló kiválasztása",
+        "description": "Az azonos nevű peronokat a járatok és az irány (→ végállomás) különbözteti meg.",
+        "data": {
+          "stop_id": "Megálló"
+        }
+      },
+      "routes": {
+        "title": "Járatok",
+        "description": "Megálló: {stop}\n\nVálaszd ki, mely járatok indulásai érdekelnek. Ha egyet sem jelölsz be, a megálló összes járata szerepel.",
+        "data": {
+          "route_ids": "Járatok",
+          "name": "Név (nem kötelező)"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Érvénytelen cím.",
+      "cannot_connect": "A szerver nem érhető el.",
+      "invalid_api": "A címen nem GTFS Manager /api/v1 válaszol (vagy túl régi a szerver).",
+      "no_feeds": "A szerveren nincs aktív menetrend.",
+      "no_stops": "Nincs találat.",
+      "query_too_short": "Legalább 2 karaktert írj be.",
+      "unknown": "Váratlan hiba."
+    },
+    "abort": {
+      "already_configured": "Ez a megálló ezekkel a járatokkal már fel van véve."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Beállítások",
+        "data": {
+          "route_ids": "Járatok (üres = mind)",
+          "departures": "Indulások száma a listában",
+          "horizon_min": "Időablak",
+          "scan_interval": "Frissítés gyakorisága"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_departure": {
+        "name": "Következő indulás"
+      },
+      "next_departure_minutes": {
+        "name": "Következő indulás (perc)"
+      },
+      "timetable": {
+        "name": "Menetrend"
+      }
+    }
+  },
+  "services": {
+    "get_departures": {
+      "name": "Indulások lekérése",
+      "description": "Friss indulási lista egy felvett megállóhoz, felolvasható magyar mondattal (speech).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Megálló",
+          "description": "A felvett GTFS Manager megálló."
+        },
+        "limit": {
+          "name": "Darabszám",
+          "description": "Legfeljebb ennyi indulás (1–50)."
+        }
+      }
+    }
+  }
+}

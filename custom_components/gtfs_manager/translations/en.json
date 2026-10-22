@@ -1,0 +1,99 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GTFS Manager server",
+        "description": "Enter the address of the GTFS Manager instance (e.g. https://timetable.example.org). Its /api/v1 endpoint will be used.",
+        "data": {
+          "url": "Server URL"
+        },
+        "data_description": {
+          "url": "Without a scheme, https:// is assumed."
+        }
+      },
+      "feed": {
+        "title": "Feed",
+        "description": "Which feed's stop would you like to add?",
+        "data": {
+          "feed_id": "Feed"
+        }
+      },
+      "stop_search": {
+        "title": "Find a stop",
+        "description": "Feed: {feed}. Type the stop name (or code). Leave empty to list stops within {radius} m of your home.",
+        "data": {
+          "query": "Stop name"
+        }
+      },
+      "stop": {
+        "title": "Choose the stop",
+        "description": "Platforms with the same name differ in routes and direction (→ terminus).",
+        "data": {
+          "stop_id": "Stop"
+        }
+      },
+      "routes": {
+        "title": "Routes",
+        "description": "Stop: {stop}\n\nSelect the routes you are interested in. If none is selected, all routes of the stop are included.",
+        "data": {
+          "route_ids": "Routes",
+          "name": "Name (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_url": "Invalid URL.",
+      "cannot_connect": "Cannot connect to the server.",
+      "invalid_api": "No GTFS Manager /api/v1 at this address (or the server is too old).",
+      "no_feeds": "The server has no active feed.",
+      "no_stops": "No stops found.",
+      "query_too_short": "Type at least 2 characters.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This stop with these routes is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "route_ids": "Routes (empty = all)",
+          "departures": "Number of departures in the list",
+          "horizon_min": "Time window",
+          "scan_interval": "Update interval"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_departure": {
+        "name": "Next departure"
+      },
+      "next_departure_minutes": {
+        "name": "Next departure (minutes)"
+      },
+      "timetable": {
+        "name": "Timetable"
+      }
+    }
+  },
+  "services": {
+    "get_departures": {
+      "name": "Get departures",
+      "description": "Fresh departure list for a configured stop, with a spoken Hungarian sentence (speech).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Stop",
+          "description": "The configured GTFS Manager stop."
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "At most this many departures (1–50)."
+        }
+      }
+    }
+  }
+}
