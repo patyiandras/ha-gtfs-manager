@@ -4,7 +4,7 @@
 
 Élő (valós idejű) indulási idők megállónként, egy **GTFS Manager** szerver
 `/api/v1` végpontjáról. Megállót, vagy megálló + járat párost lehet felvenni.
-Minden felvett megálló három szenzort kap, és van egy szolgáltatás is, amely
+Minden felvett megálló négy szenzort és egy késés-jelző bináris szenzort kap, és van egy szolgáltatás is, amely
 kész, felolvasható magyar mondatot ad vissza. Ez hangasszisztenshez is
 használható (Google Home, Gemini, Assist).
 
