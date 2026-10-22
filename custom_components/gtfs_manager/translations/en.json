@@ -48,10 +48,12 @@
       "no_feeds": "The server has no active feed.",
       "no_stops": "No stops found.",
       "query_too_short": "Type at least 2 characters.",
-      "unknown": "Unexpected error."
+      "unknown": "Unexpected error.",
+      "redirect_other_host": "The server redirects to a different host. Enter the final address directly."
     },
     "abort": {
-      "already_configured": "This stop with these routes is already configured."
+      "already_configured": "This stop with these routes is already configured.",
+      "invalid_selection": "The selected item is no longer valid — please start over."
     }
   },
   "options": {

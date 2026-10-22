@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A CI csak olvas: a tokennel semmit ne lehessen a repóba írni.
+permissions:
+  contents: read
+
 jobs:
   hacs:
     runs-on: ubuntu-latest

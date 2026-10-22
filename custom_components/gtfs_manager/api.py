@@ -1,15 +1,42 @@
-"""Kliens a GTFS Manager szerver `/api/v1` végpontjaihoz."""
+"""Kliens a GTFS Manager szerver `/api/v1` végpontjaihoz.
+
+BIZALMI HATÁR: a szerver válasza KÜLSŐ adat, ami entitás-attribútumba, a
+felületre és felolvasott szövegbe kerül. Ezért minden mező itt, a beolvasáskor
+megy át típus-, hossz- és karakterszűrésen, a válasz mérete korlátos, és a
+kliens nem követ átirányítást (egy feltört vagy rosszindulatú szerver ne tudja
+a HA-t a helyi hálózat más címeire küldeni).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import aiohttp
 
 API_VERSION = 1
 REQUEST_TIMEOUT = 15
+# Egy 50 elemes indulás-lista ~30 kB; ennél jóval nagyobb válasz nem legitim.
+MAX_RESPONSE_BYTES = 1_000_000
+
+MAX_TEXT_LEN = 200
+MAX_ID_LEN = 128
+MAX_FEEDS = 50
+MAX_STOPS = 100
+MAX_ROUTES = 200
+MAX_DEPARTURES = 50
+
+KNOWN_MODES = frozenset(
+    {"tram", "subway", "rail", "suburban", "bus", "coach", "trolleybus", "ferry", "other", "unknown"}
+)
+
+# Vezérlőkarakterek, nulla szélességű és irányváltó (bidi) jelek: a felületen
+# megtévesztő szöveget lehetne velük előállítani.
+_UNSAFE_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f​-‏‪-‮⁦-⁩﻿]")
+_HEX_COLOR = re.compile(r"^[0-9A-Fa-f]{6}$")
 
 
 class ApiError(Exception):
@@ -25,7 +52,101 @@ class ApiNotFound(ApiError):
 
 
 class ApiInvalid(ApiError):
-    """A válasz nem a várt formátumú (nem GTFS Manager, vagy más API-verzió)."""
+    """A válasz nem a várt formátumú (nem GTFS Manager, más API-verzió, túl nagy)."""
+
+
+class ApiRedirect(ApiError):
+    """A szerver átirányít — nem követjük automatikusan (lásd a modul leírását)."""
+
+    def __init__(self, url: str, location: str | None) -> None:
+        super().__init__(f"Átirányítás: {url} → {location}")
+        self.location = urljoin(url, location) if location else None
+
+
+# ── Bemenet-tisztítás ──────────────────────────────────────────────────────
+def clean_text(value: Any, max_len: int = MAX_TEXT_LEN) -> str | None:
+    if value is None or isinstance(value, (dict, list, bool)):
+        return None
+    text = _UNSAFE_CHARS.sub("", str(value)).strip()
+    return text[:max_len] or None
+
+
+def clean_id(value: Any) -> str | None:
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        return None
+    text = str(value)
+    if not text or len(text) > MAX_ID_LEN or _UNSAFE_CHARS.search(text) or text in (".", ".."):
+        return None
+    return text
+
+
+def clean_int(value: Any, lo: int, hi: int) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        num = int(value)
+    except (OverflowError, ValueError):
+        return None
+    return num if lo <= num <= hi else None
+
+
+def clean_color(value: Any) -> str | None:
+    return value if isinstance(value, str) and _HEX_COLOR.match(value) else None
+
+
+def _dicts(value: Any, cap: int) -> list[dict[str, Any]]:
+    return [v for v in value[:cap] if isinstance(v, dict)] if isinstance(value, list) else []
+
+
+def clean_route(raw: dict[str, Any]) -> dict[str, Any] | None:
+    route_id = clean_id(raw.get("route_id"))
+    if route_id is None:
+        return None
+    mode = raw.get("mode")
+    return {
+        "route_id": route_id,
+        "route_label": clean_text(raw.get("route_label"), 64) or route_id,
+        "mode": mode if mode in KNOWN_MODES else "unknown",
+        "route_color": clean_color(raw.get("route_color")),
+        "direction": clean_text(raw.get("direction")),
+    }
+
+
+def clean_stop(raw: dict[str, Any]) -> dict[str, Any] | None:
+    stop_id = clean_id(raw.get("stop_id"))
+    if stop_id is None:
+        return None
+    routes = [r for r in (clean_route(x) for x in _dicts(raw.get("routes"), MAX_ROUTES)) if r]
+    return {
+        "stop_id": stop_id,
+        "stop_name": clean_text(raw.get("stop_name")) or stop_id,
+        "stop_desc": clean_text(raw.get("stop_desc")),
+        "distance_m": clean_int(raw.get("distance_m"), 0, 100_000),
+        "is_station": raw.get("is_station") is True,
+        "routes": routes,
+    }
+
+
+def clean_departure(raw: dict[str, Any]) -> dict[str, Any] | None:
+    route = clean_route(raw)
+    trip_id = clean_id(raw.get("trip_id"))
+    scheduled = clean_text(raw.get("scheduled_at"), 40)
+    expected = clean_text(raw.get("expected_at"), 40)
+    if route is None or trip_id is None or not scheduled or not expected:
+        return None
+    return {
+        **route,
+        "trip_id": trip_id,
+        "stop_id": clean_id(raw.get("stop_id")) or "",
+        "headsign": clean_text(raw.get("headsign")),
+        "scheduled_at": scheduled,
+        "expected_at": expected,
+        # A szerver késés-sávja -10 … +60 perc; ami ezen kívül esik, az nem késés.
+        "delay_sec": clean_int(raw.get("delay_sec"), -6 * 3600, 6 * 3600),
+        "realtime": raw.get("realtime") is True,
+        "tracked": raw.get("tracked") is True,
+        "canceled": raw.get("canceled") is True,
+    }
 
 
 def normalize_url(raw: str) -> str | None:
@@ -39,12 +160,21 @@ def normalize_url(raw: str) -> str | None:
     if "://" not in url:
         url = f"https://{url}"
     parts = urlsplit(url)
-    if parts.scheme not in ("http", "https") or not parts.netloc:
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return None
+    try:
+        parts.port  # noqa: B018 — érvénytelen port (pl. „x:alert(1)") itt dob
+    except ValueError:
+        return None
+    # Felhasználónév/jelszó az URL-ben: a naplóba és a bejegyzés adataiba kerülne.
+    if parts.username or parts.password:
         return None
     path = parts.path.rstrip("/")
     # Ha valaki a teljes API-útvonalat másolta be, az alapra vágjuk vissza.
-    if path.endswith("/api/v1"):
-        path = path[: -len("/api/v1")]
+    for suffix in ("/api/v1/info", "/api/v1"):
+        if path.endswith(suffix):
+            path = path[: -len(suffix)]
+            break
     return f"{parts.scheme}://{parts.netloc}{path}"
 
 
@@ -53,7 +183,7 @@ def _seg(value: str) -> str:
 
 
 class GtfsManagerApi:
-    """Vékony aszinkron kliens; minden hívás JSON-t ad vissza."""
+    """Vékony aszinkron kliens; a válaszokat tisztított alakban adja vissza."""
 
     def __init__(self, session: aiohttp.ClientSession, base_url: str) -> None:
         self._session = session
@@ -65,24 +195,37 @@ class GtfsManagerApi:
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT):
                 async with self._session.get(
-                    url, params=clean, headers={"Accept": "application/json"}
+                    url,
+                    params=clean,
+                    headers={"Accept": "application/json"},
+                    allow_redirects=False,
                 ) as resp:
+                    if 300 <= resp.status < 400:
+                        raise ApiRedirect(url, resp.headers.get("Location"))
                     if resp.status == 404:
                         raise ApiNotFound(url)
                     if resp.status >= 400:
                         raise ApiError(f"HTTP {resp.status}: {url}")
-                    try:
-                        return await resp.json(content_type=None)
-                    except ValueError as err:
-                        raise ApiInvalid(f"Nem JSON válasz: {url}") from err
+                    body = await resp.content.read(MAX_RESPONSE_BYTES + 1)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ApiConnectionError(f"{url}: {err}") from err
+        if len(body) > MAX_RESPONSE_BYTES:
+            raise ApiInvalid(f"Túl nagy válasz: {url}")
+        try:
+            return json.loads(body)
+        except (ValueError, UnicodeDecodeError) as err:
+            raise ApiInvalid(f"Nem JSON válasz: {url}") from err
 
     async def info(self) -> dict[str, Any]:
         data = await self._get("/info")
         if not isinstance(data, dict) or data.get("api_version") != API_VERSION:
             raise ApiInvalid("Nem támogatott API-verzió")
-        return data
+        feeds = []
+        for raw in _dicts(data.get("feeds"), MAX_FEEDS):
+            feed_id = clean_id(raw.get("id"))
+            if feed_id:
+                feeds.append({"id": feed_id, "name": clean_text(raw.get("name")) or feed_id})
+        return {"api_version": API_VERSION, "feeds": feeds}
 
     async def search_stops(
         self,
@@ -98,10 +241,15 @@ class GtfsManagerApi:
             f"/feeds/{_seg(feed_id)}/stops",
             {"q": query, "lat": lat, "lon": lon, "radius_m": radius_m, "limit": limit},
         )
-        return list((data or {}).get("stops") or [])
+        stops = _dicts(data.get("stops") if isinstance(data, dict) else None, MAX_STOPS)
+        return [s for s in (clean_stop(x) for x in stops) if s]
 
     async def stop(self, feed_id: str, stop_id: str) -> dict[str, Any]:
-        return await self._get(f"/feeds/{_seg(feed_id)}/stops/{_seg(stop_id)}")
+        data = await self._get(f"/feeds/{_seg(feed_id)}/stops/{_seg(stop_id)}")
+        if not isinstance(data, dict):
+            raise ApiInvalid("Hibás megálló-válasz")
+        routes = _dicts(data.get("routes"), MAX_ROUTES)
+        return {"routes": [r for r in (clean_route(x) for x in routes) if r]}
 
     async def departures(
         self,
@@ -112,7 +260,7 @@ class GtfsManagerApi:
         limit: int | None = None,
         horizon_min: int | None = None,
     ) -> dict[str, Any]:
-        return await self._get(
+        data = await self._get(
             f"/feeds/{_seg(feed_id)}/stops/{_seg(stop_id)}/departures",
             {
                 "route_id": ",".join(route_ids) if route_ids else None,
@@ -120,3 +268,11 @@ class GtfsManagerApi:
                 "horizon_min": horizon_min,
             },
         )
+        if not isinstance(data, dict):
+            raise ApiInvalid("Hibás indulás-válasz")
+        stop = data.get("stop") if isinstance(data.get("stop"), dict) else {}
+        deps = _dicts(data.get("departures"), MAX_DEPARTURES)
+        return {
+            "stop": {"stop_name": clean_text(stop.get("stop_name"))},
+            "departures": [d for d in (clean_departure(x) for x in deps) if d],
+        }

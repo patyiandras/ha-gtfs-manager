@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 import voluptuous as vol
 
@@ -33,6 +34,7 @@ from homeassistant.helpers.selector import (
 from .api import (
     ApiConnectionError,
     ApiError,
+    ApiRedirect,
     GtfsManagerApi,
     normalize_url,
 )
@@ -124,9 +126,10 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
             if url is None:
                 errors[CONF_URL] = "invalid_url"
             else:
-                api = GtfsManagerApi(async_get_clientsession(self.hass), url)
                 try:
-                    info = await api.info()
+                    api, info = await self._probe(url)
+                except ApiRedirect:
+                    errors["base"] = "redirect_other_host"
                 except ApiConnectionError:
                     errors["base"] = "cannot_connect"
                 except ApiError:
@@ -139,7 +142,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                     if not feeds:
                         errors["base"] = "no_feeds"
                     else:
-                        self._api, self._url, self._feeds = api, url, feeds
+                        self._api, self._url, self._feeds = api, api.base_url, feeds
                         if len(feeds) == 1:
                             self._feed = feeds[0]
                             return await self.async_step_stop_search()
@@ -154,10 +157,29 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
+    async def _probe(self, url: str) -> tuple[GtfsManagerApi, dict[str, Any]]:
+        """A szerver ellenőrzése. Átirányítást CSAK ugyanazon a hoszton követünk
+        (pl. http → https, vagy alútvonal), egyszer — idegen hosztra nem: a
+        bejegyzésbe az kerüljön, amit a felhasználó ténylegesen megadott."""
+        session = async_get_clientsession(self.hass)
+        api = GtfsManagerApi(session, url)
+        try:
+            return api, await api.info()
+        except ApiRedirect as redirect:
+            target = normalize_url(redirect.location or "")
+            if not target or urlsplit(target).hostname != urlsplit(url).hostname:
+                raise
+            api = GtfsManagerApi(session, target)
+            return api, await api.info()
+
     # ── 2. Menetrend ────────────────────────────────────────────────────────
     async def async_step_feed(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            self._feed = next(f for f in self._feeds if f["id"] == user_input[CONF_FEED_ID])
+            self._feed = next(
+                (f for f in self._feeds if f["id"] == user_input.get(CONF_FEED_ID)), None
+            )
+            if self._feed is None:
+                return self.async_abort(reason="invalid_selection")
             return await self.async_step_stop_search()
         options = [SelectOptionDict(value=f["id"], label=f.get("name") or f["id"]) for f in self._feeds]
         return self.async_show_form(
@@ -178,7 +200,8 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._api and self._feed
         errors: dict[str, str] = {}
         if user_input is not None:
-            query = (user_input.get(CONF_QUERY) or "").strip()
+            # A szerver 64 karakternél hosszabb keresést elutasít.
+            query = (user_input.get(CONF_QUERY) or "").strip()[:64]
             try:
                 if len(query) >= 2:
                     stops = await self._api.search_stops(self._feed["id"], query=query, limit=40)
@@ -220,7 +243,11 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         assert self._api and self._feed
         errors: dict[str, str] = {}
         if user_input is not None:
-            self._stop = next(s for s in self._stops if s["stop_id"] == user_input[CONF_STOP_ID])
+            self._stop = next(
+                (s for s in self._stops if s["stop_id"] == user_input.get(CONF_STOP_ID)), None
+            )
+            if self._stop is None:
+                return self.async_abort(reason="invalid_selection")
             try:
                 detail = await self._api.stop(self._feed["id"], self._stop["stop_id"])
             except ApiConnectionError:
@@ -248,7 +275,8 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_routes(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         assert self._url and self._feed and self._stop
         if user_input is not None:
-            route_ids = sorted(user_input.get(CONF_ROUTE_IDS) or [])
+            known = {r["route_id"] for r in self._routes}
+            route_ids = sorted(r for r in (user_input.get(CONF_ROUTE_IDS) or []) if r in known)
             labels = [
                 r.get("route_label") or r["route_id"]
                 for r in self._routes
@@ -258,7 +286,7 @@ class GtfsManagerConfigFlow(ConfigFlow, domain=DOMAIN):
                 f"{self._url}|{self._feed['id']}|{self._stop['stop_id']}|{','.join(route_ids)}"
             )
             self._abort_if_unique_id_configured()
-            title = (user_input.get(CONF_NAME) or "").strip() or self._default_title(labels)
+            title = (user_input.get(CONF_NAME) or "").strip()[:100] or self._default_title(labels)
             return self.async_create_entry(
                 title=title,
                 data={
@@ -314,17 +342,24 @@ class GtfsManagerOptionsFlow(OptionsFlow):
             except ApiError:
                 routes = []
 
+        current_routes = entry.options.get(CONF_ROUTE_IDS, entry.data.get(CONF_ROUTE_IDS)) or []
         if user_input is not None:
+            if routes and CONF_ROUTE_IDS in user_input:
+                known = {r["route_id"] for r in routes}
+                route_ids = sorted(r for r in user_input[CONF_ROUTE_IDS] if r in known)
+            else:
+                # A járatlista most nem volt lekérhető, a mező nem is látszott:
+                # a meglévő szűrő marad (különben némán „minden járat" lenne).
+                route_ids = sorted(current_routes)
             return self.async_create_entry(
                 data={
-                    CONF_ROUTE_IDS: sorted(user_input.get(CONF_ROUTE_IDS) or []),
+                    CONF_ROUTE_IDS: route_ids,
                     CONF_DEPARTURES: int(user_input[CONF_DEPARTURES]),
                     CONF_HORIZON: int(user_input[CONF_HORIZON]),
                     CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                 }
             )
 
-        current_routes = entry.options.get(CONF_ROUTE_IDS, entry.data.get(CONF_ROUTE_IDS)) or []
         fields: dict[Any, Any] = {}
         if routes:
             fields[vol.Optional(CONF_ROUTE_IDS, default=list(current_routes))] = SelectSelector(

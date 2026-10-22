@@ -174,6 +174,20 @@ Minden végpont GET, hitelesítés nélkül.
 | `/api/v1/feeds/{feed}/stops/{stop}` | megálló + járatai (iránnyal) |
 | `/api/v1/feeds/{feed}/stops/{stop}/departures?route_id=a,b&limit=10&horizon_min=180` | következő indulások élő késéssel |
 
+## Biztonság
+
+- Az API csak a publikus menetrendi adatot adja, hitelesítés nélkül. A
+  szerver IP-címenként percenként 120 kérést enged, efölött `429` választ ad.
+- Az integráció **nem követ átirányítást**. Egyetlen kivétel a beállításkor
+  történő, ugyanazon a hoszton belüli átirányítás (pl. `http` → `https`). Egy
+  másik hosztra mutató átirányítást hibaként jelez.
+- A szerver válaszát a HA külső adatként kezeli:
+  - méretkorlát (1 MB);
+  - típus- és hosszellenőrzés;
+  - a vezérlő- és irányváltó karakterek kiszűrése.
+- Felhasználónév/jelszó nem adható meg az URL-ben. Lehetőleg `https`
+  címet használj.
+
 ## Fejlesztés
 
 ```bash

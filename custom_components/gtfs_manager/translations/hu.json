@@ -48,10 +48,12 @@
       "no_feeds": "A szerveren nincs aktív menetrend.",
       "no_stops": "Nincs találat.",
       "query_too_short": "Legalább 2 karaktert írj be.",
-      "unknown": "Váratlan hiba."
+      "unknown": "Váratlan hiba.",
+      "redirect_other_host": "A szerver egy másik címre irányít át. Add meg közvetlenül a végleges címet."
     },
     "abort": {
-      "already_configured": "Ez a megálló ezekkel a járatokkal már fel van véve."
+      "already_configured": "Ez a megálló ezekkel a járatokkal már fel van véve.",
+      "invalid_selection": "A kiválasztott elem már nem érvényes — kezdd újra."
     }
   },
   "options": {

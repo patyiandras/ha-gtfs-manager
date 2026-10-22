@@ -52,14 +52,18 @@ class Departure:
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> Departure | None:
-        scheduled = dt_util.parse_datetime(raw.get("scheduled_at") or "")
-        expected = dt_util.parse_datetime(raw.get("expected_at") or "")
-        if scheduled is None or expected is None:
+        try:
+            scheduled = dt_util.parse_datetime(raw.get("scheduled_at") or "")
+            expected = dt_util.parse_datetime(raw.get("expected_at") or "")
+        except ValueError:
+            return None
+        # Időzóna nélküli időpont nem hasonlítható a mostanihoz.
+        if scheduled is None or expected is None or None in (scheduled.tzinfo, expected.tzinfo):
             return None
         color = raw.get("route_color")
         return cls(
             route_id=str(raw.get("route_id", "")),
-            route_label=str(raw.get("route_label") or raw.get("route_short_name") or ""),
+            route_label=str(raw.get("route_label") or ""),
             mode=str(raw.get("mode") or "unknown"),
             color=f"#{color}" if color else None,
             headsign=raw.get("headsign"),
