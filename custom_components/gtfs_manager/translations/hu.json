@@ -93,6 +93,11 @@
       "delay_alert": {
         "name": "Késés van"
       }
+    },
+    "device_tracker": {
+      "next_vehicle": {
+        "name": "Következő jármű"
+      }
     }
   },
   "services": {

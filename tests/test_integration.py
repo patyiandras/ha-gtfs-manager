@@ -330,6 +330,7 @@ async def test_entity_ids_are_english_on_hungarian_ha(hass: HomeAssistant, aiocl
     ids = sorted(s.entity_id for s in hass.states.async_all() if "hatar_ut_m_50" in s.entity_id)
     assert ids == [
         "binary_sensor.hatar_ut_m_50_delay_alert",
+        "device_tracker.hatar_ut_m_50_next_vehicle",
         "sensor.hatar_ut_m_50_delay",
         "sensor.hatar_ut_m_50_next_departure",
         "sensor.hatar_ut_m_50_next_departure_minutes",
@@ -405,4 +406,37 @@ async def test_unknown_delay_does_not_alert_but_later_delay_does(
     alert = hass.states.get("binary_sensor.hatar_ut_m_50_delay_alert")
     assert alert.state == "on"
     assert alert.attributes["reason"].startswith("50 ") and alert.attributes["reason"].endswith("→ +10 perc")
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_next_vehicle_tracker(hass: HomeAssistant, aioclient_mock) -> None:
+    """A következő, pozícióval bíró jármű a térképre kerül, távolsággal a megállótól;
+    pozíció nélkül az állapot ismeretlen."""
+    now = dt_util.utcnow().replace(microsecond=0)
+    no_pos = _dep("T1", now + timedelta(minutes=3), now + timedelta(minutes=3), realtime=False, delay=None)
+    with_pos = _dep("T2", now + timedelta(minutes=8), now + timedelta(minutes=9), realtime=True, delay=60)
+    with_pos["vehicle"] = {"lat": 47.4652, "lon": 19.1408, "bearing": 270, "speed_kmh": 30, "age_sec": 12}
+    payload = {
+        "api_version": 1,
+        "stop": {"stop_name": "Határ út M", "lat": 47.465151, "lon": 19.127254},
+        "departures": [no_pos],
+    }
+    aioclient_mock.get(f"{BASE}/api/v1/feeds/f1/stops/S1/departures", json=payload)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("device_tracker.hatar_ut_m_50_next_vehicle").state == "unknown"
+
+    aioclient_mock.clear_requests()
+    payload["departures"] = [no_pos, with_pos]
+    aioclient_mock.get(f"{BASE}/api/v1/feeds/f1/stops/S1/departures", json=payload)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    tracker = hass.states.get("device_tracker.hatar_ut_m_50_next_vehicle")
+    assert tracker.attributes["latitude"] == 47.4652
+    assert tracker.attributes["longitude"] == 19.1408
+    assert tracker.attributes["source_type"] == "gps"
+    assert 1000 < tracker.attributes["distance_m"] < 1060  # ~1,03 km keletre
+    assert tracker.attributes["delay_min"] == 1 and tracker.attributes["position_age_sec"] == 12
     assert await hass.config_entries.async_unload(entry.entry_id)

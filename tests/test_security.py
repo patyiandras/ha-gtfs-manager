@@ -91,7 +91,13 @@ async def test_hostile_payload_is_sanitized(hass: HomeAssistant, aioclient_mock)
     assert dep["route_color"] is None
     assert dep["delay_sec"] is None
     assert dep["realtime"] is False
+    assert dep["vehicle"] is None
     assert clean_text({"x": 1}) is None
+    from custom_components.gtfs_manager.api import clean_position
+
+    assert clean_position({"lat": 91, "lon": 19}) is None
+    assert clean_position({"lat": "47", "lon": 19}) is None
+    assert clean_position({"lat": 47.5, "lon": 19.1, "bearing": 999})["bearing"] is None
 
 
 async def test_oversized_response_is_rejected(hass: HomeAssistant, aioclient_mock) -> None:

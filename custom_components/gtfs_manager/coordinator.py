@@ -52,6 +52,8 @@ class Departure:
     canceled: bool
     trip_id: str
     stop_id: str
+    # Élő járműpozíció ({lat, lon, bearing, speed_kmh, age_sec}) vagy None.
+    vehicle: dict[str, Any] | None = None
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> Departure | None:
@@ -78,6 +80,7 @@ class Departure:
             canceled=bool(raw.get("canceled")),
             trip_id=str(raw.get("trip_id", "")),
             stop_id=str(raw.get("stop_id", "")),
+            vehicle=raw.get("vehicle"),
         )
 
     def minutes(self, now: datetime) -> int:
@@ -121,6 +124,13 @@ class StopData:
 
     stop_name: str
     departures: list[Departure] = field(default_factory=list)
+    stop_lat: float | None = None
+    stop_lon: float | None = None
+
+    @property
+    def next_vehicle(self) -> Departure | None:
+        """A legkorábbi (nem elmaradó) indulás, amelynek járművéről van pozíció."""
+        return next((d for d in self.departures if d.vehicle and not d.canceled), None)
 
     @property
     def next(self) -> Departure | None:
@@ -154,6 +164,8 @@ def parse_departures(payload: dict[str, Any], fallback_stop_name: str) -> StopDa
     return StopData(
         stop_name=stop.get("stop_name") or fallback_stop_name,
         departures=[d for d in deps if d is not None],
+        stop_lat=stop.get("lat"),
+        stop_lon=stop.get("lon"),
     )
 
 

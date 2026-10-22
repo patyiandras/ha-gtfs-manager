@@ -93,6 +93,11 @@
       "delay_alert": {
         "name": "Delay alert"
       }
+    },
+    "device_tracker": {
+      "next_vehicle": {
+        "name": "Next vehicle"
+      }
     }
   },
   "services": {

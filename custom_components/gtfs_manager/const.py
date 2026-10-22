@@ -43,6 +43,7 @@ LEGACY_HU_NAMES = {
     "delay": "Késés",
     "timetable": "Menetrend",
     "delay_alert": "Késés van",
+    "next_vehicle": "Következő jármű",
 }
 
 SERVICE_GET_DEPARTURES = "get_departures"

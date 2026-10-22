@@ -188,6 +188,30 @@ def clean_stop(raw: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def clean_float(value: Any, lo: float, hi: float) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    num = float(value)
+    return num if lo <= num <= hi else None
+
+
+def clean_position(raw: Any) -> dict[str, Any] | None:
+    """Járműpozíció; érvénytelen koordinátánál `None` (nem rajzolunk rossz helyre)."""
+    if not isinstance(raw, dict):
+        return None
+    lat = clean_float(raw.get("lat"), -90, 90)
+    lon = clean_float(raw.get("lon"), -180, 180)
+    if lat is None or lon is None:
+        return None
+    return {
+        "lat": lat,
+        "lon": lon,
+        "bearing": clean_float(raw.get("bearing"), 0, 360),
+        "speed_kmh": clean_float(raw.get("speed_kmh"), 0, 400),
+        "age_sec": clean_int(raw.get("age_sec"), 0, 86_400),
+    }
+
+
 def clean_departure(raw: dict[str, Any]) -> dict[str, Any] | None:
     route = clean_route(raw)
     trip_id = clean_id(raw.get("trip_id"))
@@ -207,6 +231,7 @@ def clean_departure(raw: dict[str, Any]) -> dict[str, Any] | None:
         "realtime": raw.get("realtime") is True,
         "tracked": raw.get("tracked") is True,
         "canceled": raw.get("canceled") is True,
+        "vehicle": clean_position(raw.get("vehicle")),
     }
 
 
@@ -365,6 +390,10 @@ class GtfsManagerApi:
         stop = data.get("stop") if isinstance(data.get("stop"), dict) else {}
         deps = _dicts(data.get("departures"), MAX_DEPARTURES)
         return {
-            "stop": {"stop_name": clean_text(stop.get("stop_name"))},
+            "stop": {
+                "stop_name": clean_text(stop.get("stop_name")),
+                "lat": clean_float(stop.get("lat"), -90, 90),
+                "lon": clean_float(stop.get("lon"), -180, 180),
+            },
             "departures": [d for d in (clean_departure(x) for x in deps) if d],
         }

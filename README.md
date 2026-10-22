@@ -4,7 +4,8 @@
 
 Élő (valós idejű) indulási idők megállónként, egy **GTFS Manager** szerver
 `/api/v1` végpontjáról. Megállót, vagy megálló + járat párost lehet felvenni.
-Minden felvett megálló négy szenzort és egy késés-jelző bináris szenzort kap, és van egy szolgáltatás is, amely
+Minden felvett megálló négy szenzort, egy késés-jelző bináris szenzort és egy
+járműkövető (térképes) entitást kap, és van egy szolgáltatás is, amely
 kész, felolvasható magyar mondatot ad vissza. Ez hangasszisztenshez is
 használható (Google Home, Gemini, Assist).
 
@@ -19,6 +20,7 @@ használható (Google Home, Gemini, Assist).
 | `sensor.<megálló>_next_departure_minutes` | hány perc múlva indul | `route`, `headsign`, `realtime` |
 | `sensor.<megálló>_delay` | a következő indulás késése percben (negatív = korábban jön; ismeretlen, ha nincs róla élő adat) | `reason` (miért ismeretlen), `route`, `headsign`, `scheduled`, `expected` |
 | `sensor.<megálló>_timetable` | indulások száma az időablakban | `departures` (lista), `speech` |
+| `device_tracker.<megálló>_next_vehicle` | a megálló felé tartó **következő jármű élő helye** (térképen látszik; ismeretlen, ha egyik figyelt menetnek sincs pozíciója) | `latitude`, `longitude`, `distance_m` (légvonalban a megállótól), `route`, `headsign`, `expected`, `minutes`, `delay_min`, `bearing`, `speed_kmh`, `position_age_sec` |
 | `binary_sensor.<megálló>_delay_alert` | **be**, ha a listában valamelyik indulás legalább a küszöbnyit (alapból 3 perc) késik, vagy elmarad | `reason` (pl. „S60 22:36 → +10 perc”), `delayed_count`, `canceled_count`, `max_delay_min`, `items`, `speech` |
 
 - Az entitás-azonosítók **mindig angolok** (`…_next_departure`, `…_delay_alert`),
@@ -126,6 +128,31 @@ content: >
   · {{ d.minutes }} perc
   {% endfor %}
 ```
+
+### „Indulj!” – ha a busz közeledik
+
+A `next_vehicle` tracker `distance_m` attribútumára `numeric_state` trigger
+tehető. A járműkövető a térképkártyára is felvehető (`type: map`).
+
+```yaml
+automation:
+  - alias: Közeledik a busz
+    triggers:
+      - trigger: numeric_state
+        entity_id: device_tracker.hatar_ut_m_50_next_vehicle
+        attribute: distance_m
+        below: 1500
+    actions:
+      - action: notify.mobile_app_telefonom
+        data:
+          message: >-
+            {{ state_attr('device_tracker.hatar_ut_m_50_next_vehicle', 'route') }}
+            {{ state_attr('device_tracker.hatar_ut_m_50_next_vehicle', 'distance_m') }} m-re van,
+            {{ state_attr('device_tracker.hatar_ut_m_50_next_vehicle', 'minutes') }} perc múlva indul.
+```
+
+Pozíció csak akkor van, ha a menetet élőben követik (saját jármű vagy külső
+GTFS-RealTime forrás); a MÁV-vonatok egy részénél, illetve indulás előtt nincs.
 
 ### Késés bemondása, ha baj van
 
