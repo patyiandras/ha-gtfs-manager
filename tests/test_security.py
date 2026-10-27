@@ -213,3 +213,37 @@ async def test_url_with_path_falls_back_to_root(hass: HomeAssistant, aioclient_m
         result["flow_id"], {CONF_URL: f"{BASE}/home"}
     )
     assert result["step_id"] == "stop_search", result
+
+
+async def test_large_response_arriving_in_chunks_is_read_whole() -> None:
+    """A valódi hálózaton a nagyobb válasz darabokban jön; a kliens a TELJES
+    választ olvassa be (korábban az első darab után „nem JSON" hibát adott)."""
+    import json as _json
+
+    from custom_components.gtfs_manager.api import GtfsManagerApi as Api
+
+    stops = [{"stop_id": f"S{i}", "stop_name": f"Megálló {i}", "routes": []} for i in range(400)]
+    payload = _json.dumps({"stops": stops}).encode()
+
+    class _Content:
+        async def iter_chunked(self, size):
+            for i in range(0, len(payload), 1000):  # apró darabok, mint a hálózaton
+                yield payload[i : i + 1000]
+
+    class _Resp:
+        status = 200
+        headers = {"Content-Type": "application/json", "CF-RAY": "x"}
+        content = _Content()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class _Session:
+        def get(self, *args, **kwargs):
+            return _Resp()
+
+    result = await Api(_Session(), BASE).search_stops("f1", query="Megálló", limit=40)
+    assert len(result) == 100  # MAX_STOPS-ra vágva, de hiánytalanul beolvasva

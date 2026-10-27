@@ -316,11 +316,20 @@ class GtfsManagerApi:
                         raise ApiRateLimited(url, resp.status, detail)
                     if resp.status >= 400:
                         raise ApiHttpError(url, resp.status, detail)
-                    body = await resp.content.read(MAX_RESPONSE_BYTES + 1)
+                    # A TELJES választ olvassuk be, darabonként: a `content.read(n)`
+                    # csak azt adja vissza, ami épp a pufferben van, így egy
+                    # nagyobb (pl. 100 kB-os keresési) válasz félbevágva,
+                    # „nem JSON"-ként érkezett. Közben a méretkorlátot is nézzük.
+                    chunks: list[bytes] = []
+                    size = 0
+                    async for chunk in resp.content.iter_chunked(64 * 1024):
+                        size += len(chunk)
+                        if size > MAX_RESPONSE_BYTES:
+                            raise ApiInvalid(f"Túl nagy válasz: {url}", detail)
+                        chunks.append(chunk)
+                    body = b"".join(chunks)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise ApiConnectionError(f"{url}: {err}") from err
-        if len(body) > MAX_RESPONSE_BYTES:
-            raise ApiInvalid(f"Túl nagy válasz: {url}", detail)
         try:
             return json.loads(body)
         except (ValueError, UnicodeDecodeError) as err:
